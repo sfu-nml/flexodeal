@@ -1,0 +1,164 @@
+# ----------------------------------------
+#            FLEXODEAL (LITE)
+# ----------------------------------------
+#          Listing of Parameters
+# ----------------------------------------
+
+subsection Finite element system
+  # Displacement system polynomial order
+  set Polynomial degree = 2
+
+  # Gauss quadrature order
+  set Quadrature order  = 5
+
+  # Type of simulation (dynamic or quasi-static)
+  set Type of simulation = dynamic
+end
+
+
+subsection Geometry
+  # Global refinement level
+  set Global refinement   = 2
+
+   # Length of the muscle block [m]
+  set Length = 0.03
+
+  # Width of the muscle block [m]
+  set Width = 0.01
+
+  # Height of the muscle block [m]
+  set Height = 0.01
+
+  # Global grid scaling factor (note that this factor
+  # scales the grid and nothing else)
+  set Grid scale          = 1
+
+  # Ratio of applied pressure to reference pressure 
+  # [nondimensional]
+  set Pressure ratio p/p0 = 0
+end
+
+
+subsection Linear solver
+  # Linear solver iterations (multiples of the system matrix size)
+  # In 2-d, this value is best set at 2. In 3-d, a value of 1 work fine.
+  set Max iteration multiplier = 2
+
+  # Linear solver residual (scaled by residual norm)
+  set Residual                 = 1e-6
+  
+  # Use static condensation and solve a 1-block system, or solve
+  # the full 3-block system using Linear Operators and the Schur
+  # complement
+  set Use static condensation = false
+
+  # Preconditioner type (jacobi or ssor)
+  set Preconditioner type  = jacobi
+
+  # Preconditioner relaxation value
+  set Preconditioner relaxation  = 0.65
+
+  # Type of solver used to solve the linear system (GMRES, CG, or Direct).
+  # Small problems (Grid refinement level 1 or 2) can usually be solved
+  # using the Direct (UMFPACK) solver without issues. However, for larger
+  # problems, a CG solver with a Jacobi preconditioner is recommended.
+  set Solver type              = Direct
+end
+
+
+subsection Materials
+  # Density of muscle [kg/m^3]
+  set Muscle density = 1060
+
+  # -------------- Fibre properties -----------------
+
+  # Maximum isometric stress [Pa]
+  set Sigma naught muscle = 2.0e5
+
+  # Bulk modulus muscle [Pa]
+  set Bulk modulus muscle = 1.0e7
+
+  # Maximum strain rate [1/s]
+  set Max strain rate = 5.0
+
+  # Initial fibre orientation (must be a unit vector)
+  set Muscle x component = 0.86602540
+  set Muscle y component = 0.0
+  set Muscle z component = 0.50000000
+  
+  # ----------- Base material properties ------------
+
+  # Maximum isometric stress base material [Pa]
+  # (which is usually equal to that of the muscle fibres)
+  set Sigma naught base material = 2.0e5
+
+  # Base material "fudge" factor [nondimensional]. 
+  # Ideally this should be 1.
+  set Muscle base material factor = 1.0
+
+  # Constants in Yeoh strain-energy function
+  set Muscle base material constant 1 = 0.1990559575103343
+	set Muscle base material constant 2 = 0.3662334826469149
+	set Muscle base material constant 3 = 0.0
+end
+
+
+subsection Nonlinear solver
+  # Type of nonlinear solve (classicNewton or acceleratedNewton).
+  # Note that classicNewton is STRONGLY suggested as acceleratedNewton
+  # hasn't shown good performance at all.
+  set Nonlinear solver type = classicNewton
+
+  # Number of Newton-Raphson iterations allowed.
+  # Note that dynamic simulations can easily require 10 to 15 
+  # times the amount of Newton iterations per time step required 
+  # for the quasi-static problem.
+  set Max iterations Newton-Raphson = 100
+
+  # Displacement error tolerance [m]
+  set Tolerance displacement        = 1.0e-4
+
+  # Force residual tolerance (this is the L2 norm of the RHS block vector)
+  set Tolerance force               = 1.0e-4
+end
+
+
+subsection Time
+  # End time [s]
+  # To obtain data for the very last time step, add 1e-08 to
+  # the desired end time
+  set End time       = 0.50000001
+
+  # Time step size [s]
+  set Time step size = 0.025
+end
+
+
+subsection Prescribed displacement
+    # Even if you perform an isometric contraction it is important
+    # to set this quantity properly as this is the place where
+    # forces are computed for the force_data-3d.csv time series file.
+    set Pulling face ID  = 1
+end
+
+
+subsection Measuring locations
+    # These locations MUST correspond to vertices on the grid. Otherwise
+    # the solver returns the error: "The evaluation point ... was not 
+    # found among the vertices of the present grid."
+
+    # Left point coordinates [m]
+    set Left X = 0.0075
+    set Left Y = 0.005
+    set Left Z = 0.005
+    
+    # Middle point coordinates [m]
+    set Mid X  = 0.015
+    set Mid Y  = 0.005
+    set Mid Z  = 0.005
+
+    # Right point coordinates [m]
+    set Right X = 0.0225
+    set Right Y = 0.005
+    set Right Z = 0.005
+end
