@@ -67,6 +67,9 @@ end
 
 
 subsection Materials
+  # QP information
+  set QP list filename = quadrature_data-3d.csv
+
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
 

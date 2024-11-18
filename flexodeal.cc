@@ -245,6 +245,7 @@ namespace Flexodeal
     // surrounded by a base material.
     struct MuscleProperties
     {
+      std::string qp_list_filename;
       double muscle_density;
 
       // Fibre properties
@@ -273,6 +274,10 @@ namespace Flexodeal
     {
       prm.enter_subsection("Materials");
       {
+        prm.declare_entry("QP list filename", "",
+                          Patterns::FileName(),
+                          "QP list filename");
+
         prm.declare_entry("Muscle density", "1060",
                           Patterns::Double(),
                           "Muscle tissue density");
@@ -330,6 +335,7 @@ namespace Flexodeal
     {
       prm.enter_subsection("Materials");
       {
+        qp_list_filename        = prm.get("QP list filename");
         muscle_density          = prm.get_double("Muscle density");
 
         max_iso_stress_muscle   = prm.get_double("Sigma naught muscle");
@@ -1660,7 +1666,7 @@ namespace Flexodeal
           const std::string &strain_file,
           const std::string &activation_file);
 
-    void run();
+    void run(const bool qp_list_only);
 
   private:
     // In the private section of this class, we first forward declare a number
@@ -1686,6 +1692,9 @@ namespace Flexodeal
     // We start the collection of member functions with one that builds the
     // grid:
     void make_grid();
+
+    // Outputs the quadrature point table
+    void output_qp_list();
 
     // Obtain all boundary IDs
     void determine_boundary_ids();
@@ -2037,26 +2046,34 @@ namespace Flexodeal
   // n_components to 1. This is exactly what we want. Have a look at its usage
   // in step-20 for more information.
   template <int dim>
-  void Solid<dim>::run()
+  void Solid<dim>::run(const bool qp_list_only)
   {
     std::cout << R"(
-
-+=============================================================================+
-|                                                                             |
-|  ███████╗██╗     ███████╗██╗  ██╗ ██████╗ ██████╗ ███████╗ █████╗ ██╗       |
-|  ██╔════╝██║     ██╔════╝╚██╗██╔╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗██║       |
-|  █████╗  ██║     █████╗   ╚███╔╝ ██║   ██║██║  ██║█████╗  ███████║██║       |
-|  ██╔══╝  ██║     ██╔══╝   ██╔██╗ ██║   ██║██║  ██║██╔══╝  ██╔══██║██║       |
-|  ██║     ███████╗███████╗██╔╝ ██╗╚██████╔╝██████╔╝███████╗██║  ██║███████╗  |
-|  ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝  |
-|                                                                             |
-+=============================================================================+
++------------------------------------------------------+
+|                                                      |
+|   __| |     __| \ \  /   _ \  _ \  __|    \    |     |
+|   _|  |     _|   >  <   (   | |  | _|    _ \   |     |
+|  _|  ____| ___|  _/\_\ \___/ ___/ ___| _/  _\ ____|  |
+|                                                      |
++------------------------------------------------------+
     )" << std::endl;
 
     // Create directory to store all the outputs
     if (mkdir(save_dir, 0777) == -1)
       std::cerr << "Error :  " << strerror(errno) << std::endl;
     
+    make_grid();
+    
+    // If qp_list_only is true, write QP file and return.
+    // output_qp_list will require the triangulation object,
+    // so this function can only be called after make_grid().
+    if (qp_list_only)
+    {
+      output_qp_list();
+      std::cout << "QP table generated!" << std::endl;
+      return void();
+    }
+
     // Store parameters file
     {
       std::ostringstream prm_output_filename;
@@ -2067,7 +2084,6 @@ namespace Flexodeal
                                       ParameterHandler::KeepDeclarationOrder);
     }
 
-    make_grid();
     determine_boundary_ids();
     system_setup();
     {
@@ -2390,6 +2406,41 @@ namespace Flexodeal
       grid_out.write_msh(triangulation, output);
     }
   }
+
+  // @sect4{Solid::output_qp_list}
+
+  // This is a function that creates the table on which quadrature point
+  // information will be written.
+  template <int dim>
+  void Solid<dim>::output_qp_list()
+  {
+      std::ostringstream filename;
+      filename << save_dir << "/" << parameters.qp_list_filename;
+      std::ofstream output(filename.str().c_str());
+      output << "x-point" << "," << "y-point" << "," << "z-point" <<"\n";
+
+      // fe has been setup at initialization. Otherwise, we could
+      // create a dummy fe here
+      FEValues<dim> fe_values(fe, qf_cell, update_quadrature_points);
+
+      for (const auto &cell : triangulation.active_cell_iterators())
+      {
+        fe_values.reinit(cell);
+
+        // Get cell QPs
+        const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
+
+        // Write them to file
+        for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+        {
+          float qp_x = qp[q_point][0] / parameters.scale;
+          float qp_y = qp[q_point][1] / parameters.scale;
+          float qp_z = qp[q_point][2] / parameters.scale;
+          output << std::fixed << std::setprecision(4) << std::scientific
+                 << qp_x << "," << qp_y << "," << qp_z <<"\n";
+        }
+      }
+    }
 
   // @sect4{Solid::determine_boundary_ids}
 
@@ -5051,7 +5102,7 @@ int main(int argc, char* argv[])
       }
 
       Solid<dim>  solid(parameters_file, strain_file, activation_file);
-      solid.run();
+      solid.run(true);
     }
   catch (std::exception &exc)
     {
