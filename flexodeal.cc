@@ -1664,7 +1664,7 @@ namespace Flexodeal
   public:
     Solid(const std::map<std::string, std::string> &args);
 
-    void run(const bool qp_list_only);
+    void run();
 
   private:
     // In the private section of this class, we first forward declare a number
@@ -1690,6 +1690,7 @@ namespace Flexodeal
     // We start the collection of member functions with one that builds the
     // grid:
     void make_grid();
+    void read_grid(const std::string mesh_filename);
 
     // Outputs the quadrature point table
     void output_qp_list();
@@ -1791,6 +1792,7 @@ namespace Flexodeal
 
     // Finally, some member variables that describe the current state: A
     // collection of the parameters used to describe the problem setup...
+    std::map<std::string, std::string> varargs;
     Parameters::AllParameters parameters;
 
     // ...the volume of the reference configuration...
@@ -1931,13 +1933,14 @@ namespace Flexodeal
   // We initialize the Solid class using data extracted from the parameter file.
   template <int dim>
   Solid<dim>::Solid(const std::map<std::string, std::string> &args)
-    : parameters(args.at("-PARAMETERS"))
+    : varargs(args)
+    , parameters(varargs.at("-PARAMETERS"))
     , vol_reference(0.)
     , triangulation(Triangulation<dim>::maximum_smoothing)
     , time(parameters.end_time, parameters.delta_t)
     , timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
-    , u_dir(args.at("-BDY_STRAIN"))
-    , activation_function(args.at("-ACTIVATION"))
+    , u_dir(varargs.at("-BDY_STRAIN"))
+    , activation_function(varargs.at("-ACTIVATION"))
     , degree(parameters.poly_degree)
     ,
     // The Finite Element System is composed of dim continuous displacement
@@ -1966,57 +1969,13 @@ namespace Flexodeal
     , n_q_points(qf_cell.size())
     , n_q_points_f(qf_face.size())
   {
-    Assert(dim == 2 || dim == 3,
-           ExcMessage("This problem only works in 2 or 3 space dimensions."));
+    Assert(dim == 3,
+           ExcMessage("This problem only works in 3 space dimensions."));
+
     determine_component_extractors();
 
-    // Initialize save_dir first with the current timestamp.
-    std::chrono::system_clock::time_point time_now;
-    time_t time_conv;
-    struct tm* timeinfo;
-
-    time_now = std::chrono::system_clock::now();
-    time_conv = std::chrono::system_clock::to_time_t(time_now);
-    timeinfo = localtime(&time_conv);
-    strftime(save_dir,80,"%Y%m%d_%H%M%S",timeinfo);
-
-    // Then, we append to the timestamp some letters to
-    // quickly visualize the type of simulation that we just
-    // performed:
-
-    // Append _Q or _D depending on the type of simulation
-    if (parameters.type_of_simulation == "quasi-static")
-      strcat(save_dir, "_Q");
-    else if (parameters.type_of_simulation == "dynamic")
-      strcat(save_dir, "_D");
-
-    // Append nonlinear solver info
-    if (parameters.type_nonlinear_solver == "classicNewton")
-      strcat(save_dir, "C");
-    else if (parameters.type_nonlinear_solver == "acceleratedNewton")
-      strcat(save_dir, "A");
-
-    // Append linear solver info
-    if (parameters.type_lin == "CG")
-      strcat(save_dir, "C");
-    else if (parameters.type_lin == "GMRES")
-      strcat(save_dir, "G");
-    else if (parameters.type_lin == "Direct")
-      strcat(save_dir, "D");
-    
-    // Append preconditioner info
-    if (parameters.type_lin == "Direct")
-      strcat(save_dir, "X");
-    else if (parameters.preconditioner_type == "ssor" && parameters.type_lin != "Direct")
-      strcat(save_dir, "S");
-    else if (parameters.preconditioner_type == "jacobi" && parameters.type_lin != "Direct")
-      strcat(save_dir, "J");
-
-    // Static condensation?
-    if (parameters.use_static_condensation)
-      strcat(save_dir, "T");
-    else
-      strcat(save_dir, "F");
+    // Initialize save_dir with -OUTPUT_DIR
+    strcpy(save_dir, varargs.at("-OUTPUT_DIR").c_str());
   }
 
 
@@ -2042,7 +2001,7 @@ namespace Flexodeal
   // n_components to 1. This is exactly what we want. Have a look at its usage
   // in step-20 for more information.
   template <int dim>
-  void Solid<dim>::run(const bool qp_list_only)
+  void Solid<dim>::run()
   {
     std::cout << R"(
 +------------------------------------------------------+
@@ -2056,14 +2015,24 @@ namespace Flexodeal
 
     // Create directory to store all the outputs
     if (mkdir(save_dir, 0777) == -1)
-      std::cerr << "Error :  " << strerror(errno) << std::endl;
+    {
+      if (errno == EEXIST)
+        std::cout << "Warning: directory \"" << save_dir << "\" exists." << std::endl;
+      else
+        std::cerr << "mkdir error:  " << strerror(errno) << std::endl;
+    }
+      
     
-    make_grid();
+    // Make or read grid, depending on the input
+    if (varargs.at("-MESH_FILE").empty())
+      make_grid();
+    else
+      read_grid(varargs.at("-MESH_FILE"));
     
     // If qp_list_only is true, write QP file and return.
     // output_qp_list will require the triangulation object,
     // so this function can only be called after make_grid().
-    if (qp_list_only)
+    if (varargs.at("-QP_LIST_ONLY") == "true")
     {
       output_qp_list();
       std::cout << "QP table generated!" << std::endl;
@@ -2401,6 +2370,19 @@ namespace Flexodeal
       std::ofstream output(filename.str().c_str());
       grid_out.write_msh(triangulation, output);
     }
+  }
+
+  template <int dim>
+  void Solid<dim>::read_grid(const std::string mesh_filename)
+  {
+    GridIn<dim> gridin;
+    gridin.attach_triangulation(triangulation);
+    std::ifstream infile(mesh_filename);
+    if (infile.fail())
+      throw std::invalid_argument("Cannot open file: " + mesh_filename +  
+            ". Make sure the file exists and it has read permissions.");
+    else
+      gridin.read_msh(infile);
   }
 
   // @sect4{Solid::output_qp_list}
@@ -5076,8 +5058,7 @@ int main(int argc, char* argv[])
   args["-ACTIVATION"] = "control_points_activation.dat";
   args["-ACTIVATION_LIST"] = "activation_list.dat";
   args["-QP_LIST_ONLY"] = "false";
-  args["-QP_FILE"] = "quadrature_point_data.dat";
-  args["-MESH"] = "grid-3d.msh";
+  args["-MESH_FILE"] = "";
   args["-OUTPUT_DIR"] = "output";
 
   // Modify default values according to input
@@ -5121,8 +5102,7 @@ int main(int argc, char* argv[])
       const unsigned int dim = 3;
       
       Solid<dim>  solid(args);
-      bool qp_list_only = (args["-QP_LIST_ONLY"] == "true");
-      solid.run(qp_list_only);
+      solid.run();
     }
   catch (std::exception &exc)
     {
