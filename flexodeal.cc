@@ -1662,9 +1662,7 @@ namespace Flexodeal
   class Solid
   {
   public:
-    Solid(const std::string &input_file,
-          const std::string &strain_file,
-          const std::string &activation_file);
+    Solid(const std::map<std::string, std::string> &args);
 
     void run(const bool qp_list_only);
 
@@ -1932,16 +1930,14 @@ namespace Flexodeal
 
   // We initialize the Solid class using data extracted from the parameter file.
   template <int dim>
-  Solid<dim>::Solid(const std::string &input_file,
-                    const std::string &strain_file,
-                    const std::string &activation_file)
-    : parameters(input_file)
+  Solid<dim>::Solid(const std::map<std::string, std::string> &args)
+    : parameters(args.at("-PARAMETERS"))
     , vol_reference(0.)
     , triangulation(Triangulation<dim>::maximum_smoothing)
     , time(parameters.end_time, parameters.delta_t)
     , timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
-    , u_dir(strain_file)
-    , activation_function(activation_file)
+    , u_dir(args.at("-BDY_STRAIN"))
+    , activation_function(args.at("-ACTIVATION"))
     , degree(parameters.poly_degree)
     ,
     // The Finite Element System is composed of dim continuous displacement
@@ -5071,38 +5067,62 @@ int main(int argc, char* argv[])
 {
   using namespace Flexodeal;
 
+  // Declare a map to store key-value pairs from argv
+  std::map<std::string, std::string> args;
+
+  // Store default values
+  args["-PARAMETERS"] = "parameters.prm";
+  args["-BDY_STRAIN"] = "control_points_strain.dat";
+  args["-ACTIVATION"] = "control_points_activation.dat";
+  args["-ACTIVATION_LIST"] = "activation_list.dat";
+  args["-QP_LIST_ONLY"] = "false";
+  args["-QP_FILE"] = "quadrature_point_data.dat";
+  args["-MESH"] = "grid-3d.msh";
+  args["-OUTPUT_DIR"] = "output";
+
+  // Modify default values according to input
+  {
+    // Loop through the command-line arguments
+    for (int i = 1; i < argc; ++i) {
+      std::string arg = argv[i];
+
+      // Check if the argument starts with a dash '-'
+      if (arg[0] != '-')
+        throw std::invalid_argument("Invalid argument (does not start with '-'): " + arg);
+
+      // Check if the argument contains '=' (i.e., key-value pair)
+      size_t pos = arg.find('=');
+
+      // Extract key from argument
+      std::string key = arg.substr(0, pos);
+
+      // Verify that the key is valid
+      auto it = args.find(key);
+      if (it == args.end())
+        throw std::invalid_argument("Unsupported argument: " + key);
+
+      // If argument contains "=", insert key-value pair,
+      // otherwise insert key-"true" pair.
+      if (pos != std::string::npos) 
+      {
+        // Extract value from argument
+        std::string value = arg.substr(pos + 1);
+        args[key] = value;
+      } 
+      else
+        args[key] = "true";
+    }
+  }
+
   try
     {
       // The program only works for dim = 3. 
       // Maybe one day will also work for dim = 2 ...
       const unsigned int dim = 3;
-      std::string parameters_file, strain_file, activation_file;
       
-      if (argc == 1)
-      {
-        // If no extra arguments are given (such as when calling "make run" 
-        // or just "./dynamic-muscle"), then the following files are
-        // considered by default:
-        parameters_file = "parameters.prm";
-        strain_file     = "control_points_strain.dat";
-        activation_file = "control_points_activation.dat";
-        
-        // Caution must be taken when using files that are different from
-        // these default values. Whatever name you use for these files,
-        // the order must be preserved. 
-        //
-        // Remember: public service announcement, PSA (parameters, strain, 
-        // activation)! Credits to Kshitij Patil for the acronym :)
-      } 
-      else
-      {
-        parameters_file = argv[1];
-        strain_file     = argv[2];
-        activation_file = argv[3];
-      }
-
-      Solid<dim>  solid(parameters_file, strain_file, activation_file);
-      solid.run(true);
+      Solid<dim>  solid(args);
+      bool qp_list_only = (args["-QP_LIST_ONLY"] == "true");
+      solid.run(qp_list_only);
     }
   catch (std::exception &exc)
     {
