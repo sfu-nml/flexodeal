@@ -1380,22 +1380,42 @@ namespace Flexodeal
     // dilation $\widetilde{J}$ field values, fibre activation $a(t^n)$,
     // and time step size $\delta t$ (recall that the elasticity tensor
     // in the dynamic computation depends on the current time step size).
-    void setup_lqp(const Parameters::AllParameters &parameters)
-    {
-      material =
+    void setup_lqp(const Parameters::AllParameters &parameters,
+                   const std::map<std::string, double> &qp_data)
+    { 
+      try
+      {
+        material =
         std::make_shared<Muscle_Tissues_Three_Field<dim>>(
           parameters.type_of_simulation,
-          parameters.max_iso_stress_muscle,
+          qp_data.at("max_iso_stress_muscle"),
           parameters.kappa_muscle,
           parameters.max_strain_rate,
-          parameters.muscle_fibre_orientation_x,
-          parameters.muscle_fibre_orientation_y,
-          parameters.muscle_fibre_orientation_z,
+          qp_data.at("muscle_fibre_orientation_x"),
+          qp_data.at("muscle_fibre_orientation_y"),
+          qp_data.at("muscle_fibre_orientation_z"),
           parameters.max_iso_stress_basematerial,
           parameters.muscle_basematerial_factor,
           parameters.muscle_basemat_c1,
           parameters.muscle_basemat_c2,
           parameters.muscle_basemat_c3);
+      }
+      catch (const std::out_of_range& e)
+      {
+        std::cerr << R"(
+          Error: key not found. The evaluation qp_data.at("key") cannot
+          be performed. This could happen when a column in the quadrature
+          point table is mispelled or when the program tries to retrieve 
+          information from a column that does not exist. 
+          
+          Make sure your quadrature point table contains, at least, the 
+          following columns: qp_x, qp_y, qp_z, max_iso_stress_muscle, 
+          muscle_fibre_orientation_x, muscle_fibre_orientation_y, 
+          muscle_fibre_orientation_z.
+        )" << std::endl;
+        std::cerr << "what() outputs: " << e.what() << std::endl;
+      }
+      
       
       update_values(Tensor<1,dim>(),    /*Displacement*/
                     Tensor<2,dim>(),    /*Gradient of displacement*/
@@ -2383,6 +2403,7 @@ namespace Flexodeal
             ". Make sure the file exists and it has read permissions.");
     else
       gridin.read_msh(infile);
+    infile.close();
   }
 
   // @sect4{Solid::output_qp_list}
@@ -2393,9 +2414,11 @@ namespace Flexodeal
   void Solid<dim>::output_qp_list()
   {
       std::ostringstream filename;
-      filename << save_dir << "/" << parameters.qp_list_filename;
+      filename << parameters.qp_list_filename;
       std::ofstream output(filename.str().c_str());
-      output << "x-point" << "," << "y-point" << "," << "z-point" <<"\n";
+
+      // The first thing is to output the column names. 
+      output << "qp_x" << "," << "qp_y" << "," << "qp_z" <<"\n";
 
       // fe has been setup at initialization. Otherwise, we could
       // create a dummy fe here
@@ -2697,18 +2720,74 @@ namespace Flexodeal
                                         triangulation.end(),
                                         n_q_points);
 
-    // Next we setup the initial quadrature point data.
+    // We now read the QP-dependent information. Here, we assume that
+    // the quadrature points follow the same (row) order as the output
+    // from output_qp_list(). Therefore, we perform this operation
+    // *within* the q_point loop.
+
+    std::ifstream infile(parameters.qp_list_filename);
+
+    if (infile.fail())
+      throw std::invalid_argument("Cannot open file: " 
+              + parameters.qp_list_filename 
+              + ". Make sure the file exists and it has read permissions.");
+    
+    std::string line;
+    std::vector<std::string> headers;
+    std::vector<double> qp_info;
+
+     // Read and store the header line
+    if (std::getline(infile, line)) 
+    {
+      std::stringstream ss(line);
+      std::string value;
+
+      // Split the header line into tokens and store them
+      while (std::getline(ss, value, ',')) 
+        headers.push_back(value);
+      
+      // If the CSV file was saved in Windows, the last key
+      // will contain the carriage return (CR) character \r.
+      // We must remove this.
+      std::string& last_value = headers.back();
+      last_value.erase(std::remove(last_value.begin(), last_value.end(), '\r'), 
+                       last_value.end());
+    }
+           
     // Note that when the quadrature point data is retrieved,
     // it is returned as a vector of smart pointers.
     for (const auto &cell : triangulation.active_cell_iterators())
-      {
-        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
-          quadrature_point_history.get_data(cell);
-        Assert(lqph.size() == n_q_points, ExcInternalError());
+    {
+      const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+        quadrature_point_history.get_data(cell);
+      Assert(lqph.size() == n_q_points, ExcInternalError());
 
-        for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
-          lqph[q_point]->setup_lqp(parameters);
+      for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+      {
+        std::getline(infile, line);
+        std::stringstream ss(line);
+        std::string value;
+        std::vector<std::string> tokens;
+        std::map<std::string, double> qp_data;
+
+        // Split the line into tokens
+        while (std::getline(ss, value, ',')) 
+          tokens.push_back(value);
+
+        // Create map that will store the qp_data
+        for (unsigned int k = 0; k < headers.size(); ++k)
+          qp_data[headers[k]] = std::stod(tokens[k]);
+        
+        // Setup current QP
+        lqph[q_point]->setup_lqp(parameters, qp_data);
       }
+    }
+
+    infile.close();
+    
+    std::cout << "\n    Quadrature point data set using \""
+              << parameters.qp_list_filename
+              << "\"\n" << std::endl;
   }
 
   // @sect4{Solid::update_qph_incremental}
@@ -5080,7 +5159,14 @@ int main(int argc, char* argv[])
       // Verify that the key is valid
       auto it = args.find(key);
       if (it == args.end())
+      {
+        std::cout << "Supported arguments: ";
+        for (const auto& pair : args)
+          std::cout << pair.first << " ";
+        std::cout << std::endl;
+        
         throw std::invalid_argument("Unsupported argument: " + key);
+      }
 
       // If argument contains "=", insert key-value pair,
       // otherwise insert key-"true" pair.
