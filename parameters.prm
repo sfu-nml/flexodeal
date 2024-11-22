@@ -68,7 +68,7 @@ end
 
 subsection Materials
   # QP information
-  set QP list filename = quadrature_data-3d.csv
+  set QP list filename = quadrature_point_data.csv
 
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
@@ -103,6 +103,20 @@ subsection Materials
   set Muscle base material constant 1 = 0.1990559575103343
 	set Muscle base material constant 2 = 0.3662334826469149
 	set Muscle base material constant 3 = 0.0
+
+  # ------------------- Fat properties --------------
+
+  # Bulk modulus fat [Pa]
+  set Bulk modulus fat = 1.0e+07
+  
+  # Fat "fudge" factor [nondimensional].
+  # Ideally this should be 1.
+  set Fat factor = 1.0
+
+  # Constants in Neo-Hookean strain-energy function
+  set Fat constant 1 = 1.3e+05
+
+  # Fat fraction: input via quadrature point table (CSV file)
 end
 
 
