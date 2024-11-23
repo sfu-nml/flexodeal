@@ -64,6 +64,8 @@ The next step is to attach physiological properties to each one of these points.
 
 > :warning: *The order of these columns does not matter, however, it is important to use the correct header name, otherwise, the code will throw an error.*
 
+Review the file ```sample_quadrature_point_data.csv``` to see how the QP file should look like.
+
 ## 3. Running the code
 
 Once you have set up your quadrature point file, you may run Flexodeal as

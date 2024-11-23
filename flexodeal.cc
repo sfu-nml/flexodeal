@@ -23,6 +23,7 @@
  * This software has been created based on the "muscle code" developed by
  * members of the NML since 2014:
  * 
+ *         Harshil Pathak
  *         Ryan N. Konno
  *         Cassidy Tam
  *         Sebastian A. Dominguez-Rivera
