@@ -66,7 +66,11 @@ The next step is to attach physiological properties to each one of these points.
 
 Review the file ```sample_quadrature_point_data.csv``` to see how the QP file should look like.
 
-## 3. Running the code
+## 3. Set up markers
+
+You may set a list of markers to track displacements at different points in the geometry. The list (by default, `markers.dat`, with the filename set in `parameters.prm` in the `Measuring locations` subsection) has four columns: the first one is a label and the other are the three components of the marker. Note that, in this context, a marker is a mesh vertex that contains displacement degrees of freedom. Therefore, every marker **must** be a vertex in the mesh. Check the file `markers.dat` to see the structure of this file. **If you do not know the location of any markers, just create an empty file with the name as given in `set Markers list file` inside `parameters.prm`.**
+
+## 4. Running the code
 
 Once you have set up your quadrature point file, you may run Flexodeal as
 ```
