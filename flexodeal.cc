@@ -2040,8 +2040,8 @@ namespace Flexodeal
        FE_DGPMonomial<dim>(parameters.poly_degree - 1),
        1, // pressure
        FE_DGPMonomial<dim>(parameters.poly_degree - 1),
-       1)
-    , // dilatation
+       1) // dilatation
+    ,
     dof_handler(triangulation)
     , dofs_per_cell(fe.n_dofs_per_cell())
     , u_fe(first_u_component)
@@ -2058,8 +2058,59 @@ namespace Flexodeal
 
     determine_component_extractors();
 
-    // Initialize save_dir with -OUTPUT_DIR
-    strcpy(save_dir, varargs.at("-OUTPUT_DIR").c_str());
+    // Initialize save_dir with -OUTPUT_DIR if provided,
+    // otherwise use current timestamp as folder name
+    if (!varargs.at("-OUTPUT_DIR").empty())
+      strcpy(save_dir, varargs.at("-OUTPUT_DIR").c_str());
+    else
+    {
+      std::chrono::system_clock::time_point time_now;
+      time_t time_conv;
+      struct tm* timeinfo;
+
+      time_now = std::chrono::system_clock::now();
+      time_conv = std::chrono::system_clock::to_time_t(time_now);
+      timeinfo = localtime(&time_conv);
+      strftime(save_dir,80,"%Y%m%d_%H%M%S",timeinfo);
+
+      // Then, we append to the timestamp some letters to
+      // quickly visualize the type of simulation that we just
+      // performed:
+
+      // Append _Q or _D depending on the type of simulation
+      if (parameters.type_of_simulation == "quasi-static")
+        strcat(save_dir, "_Q");
+      else if (parameters.type_of_simulation == "dynamic")
+        strcat(save_dir, "_D");
+
+      // Append nonlinear solver info
+      if (parameters.type_nonlinear_solver == "classicNewton")
+        strcat(save_dir, "C");
+      else if (parameters.type_nonlinear_solver == "acceleratedNewton")
+        strcat(save_dir, "A");
+
+      // Append linear solver info
+      if (parameters.type_lin == "CG")
+        strcat(save_dir, "C");
+      else if (parameters.type_lin == "GMRES")
+        strcat(save_dir, "G");
+      else if (parameters.type_lin == "Direct")
+        strcat(save_dir, "D");
+      
+      // Append preconditioner info
+      if (parameters.type_lin == "Direct")
+        strcat(save_dir, "X");
+      else if (parameters.preconditioner_type == "ssor" && parameters.type_lin != "Direct")
+        strcat(save_dir, "S");
+      else if (parameters.preconditioner_type == "jacobi" && parameters.type_lin != "Direct")
+        strcat(save_dir, "J");
+
+      // Static condensation?
+      if (parameters.use_static_condensation)
+        strcat(save_dir, "T");
+      else
+        strcat(save_dir, "F");
+    }
   }
 
 
@@ -2501,7 +2552,7 @@ namespace Flexodeal
           float qp_x = qp[q_point][0] / parameters.scale;
           float qp_y = qp[q_point][1] / parameters.scale;
           float qp_z = qp[q_point][2] / parameters.scale;
-          output << std::fixed << std::setprecision(4) << std::scientific
+          output << std::scientific << std::setprecision(8) 
                  << qp_x << "," << qp_y << "," << qp_z <<"\n";
         }
       }
@@ -2817,11 +2868,18 @@ namespace Flexodeal
       last_value.erase(std::remove(last_value.begin(), last_value.end(), '\r'), 
                        last_value.end());
     }
+
+    // Initialize an FEValues element to check that QPs match
+    // the given list
+    FEValues<dim> fe_values(fe, qf_cell, update_quadrature_points);
            
     // Note that when the quadrature point data is retrieved,
     // it is returned as a vector of smart pointers.
     for (const auto &cell : triangulation.active_cell_iterators())
     {
+      fe_values.reinit(cell);
+      const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
+
       const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
         quadrature_point_history.get_data(cell);
       Assert(lqph.size() == n_q_points, ExcInternalError());
@@ -2841,6 +2899,29 @@ namespace Flexodeal
         // Create map that will store the qp_data
         for (unsigned int k = 0; k < headers.size(); ++k)
           qp_data[headers[k]] = std::stod(tokens[k]);
+
+        // Double check that quadrature points are correctly listed
+        {
+          DeclException2(
+            ExcEvaluationPointNotFound,
+            Point<dim>, Point<dim>,
+            << "Quadrature point provided in input table (" 
+            << arg1
+            << ") does not match internal order (I was expecting "
+            << arg2
+            << "). Check that you are using the correct QP file. If not, "
+            << "regenerate this list using \"./flexodeal -QP_LIST_ONLY\".");
+
+          const Point<dim> qp_in_list = qp[q_point];
+          const Point<dim> qp_in_table(std::stod(tokens[0]),
+                                       std::stod(tokens[1]),
+                                       std::stod(tokens[2]));
+          const double distance = qp_in_table.distance(qp_in_list);
+          const bool qps_match = (distance < 1e-8);
+          if (!qps_match)
+            AssertThrow(qps_match,
+                        ExcEvaluationPointNotFound(qp_in_table, qp_in_list));
+        }
         
         // Setup current QP
         lqph[q_point]->setup_lqp(parameters, qp_data);
@@ -5202,7 +5283,7 @@ int main(int argc, char* argv[])
   args["-ACTIVATION_LIST"] = "activation_list.dat";
   args["-QP_LIST_ONLY"] = "false";
   args["-MESH_FILE"] = "";
-  args["-OUTPUT_DIR"] = "output";
+  args["-OUTPUT_DIR"] = "";
 
   // Modify default values according to input
   {
