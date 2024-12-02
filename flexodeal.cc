@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Flexodeal Lite
+ * Flexodeal
  * Copyright (C) 2024 Neuromuscular Mechanics Laboratory
  *
  * This file is part of the Flexodeal library
