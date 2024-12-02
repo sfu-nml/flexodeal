@@ -578,19 +578,22 @@ namespace Flexodeal
 
     // @sect4{Measuring locations}
     
-    // We select three points in the geometry at which we will
-    // output traces of displacement.
+    // We use this section to indicate the file which contains a list
+    // of markers. We call a "marker" a mesh vertex that contains
+    // displacement degrees of freedom, so that we can output displacement
+    // information at particular points. Older versions of this code had only
+    // support for three points (left, mid, and right), but now all we need
+    // is a list containing a label and the 3D point. For example, a file
+    // called markers.dat could contain the following information:
+    //   p1 0.0075 0.005 0.005
+    //   p2 0.015  0.005 0.005
+    //   p3 0.0225 0.005 0.005
+    // Note that the markers MUST corresponds to places with availability of
+    // displacement degrees of freedom (for Q2 and Q1 elements, these are mesh
+    // vertices).
     struct MeasuringLocations
     {
-      double x_left;
-      double y_left;
-      double z_left;
-      double x_mid;
-      double y_mid;
-      double z_mid;
-      double x_right;
-      double y_right;
-      double z_right;
+      std::string markers_list_file;
 
       static void
       declare_parameters(ParameterHandler &prm);
@@ -603,41 +606,9 @@ namespace Flexodeal
     {
       prm.enter_subsection("Measuring locations");
       {
-        prm.declare_entry("Left X", "0.0",
-                          Patterns::Double(),
-                          "Left measuring point, X coordinate");
-
-        prm.declare_entry("Left Y", "0.0",
-                          Patterns::Double(),
-                          "Left measuring point, Y coordinate");
-
-        prm.declare_entry("Left Z", "0.0",
-                          Patterns::Double(),
-                          "Left measuring point, Z coordinate");
-
-        prm.declare_entry("Mid X", "0.0",
-                          Patterns::Double(),
-                          "Mid measuring point, X coordinate");
-
-        prm.declare_entry("Mid Y", "0.0",
-                          Patterns::Double(),
-                          "Mid measuring point, Y coordinate");
-
-        prm.declare_entry("Mid Z", "0.0",
-                          Patterns::Double(),
-                          "Mid measuring point, Z coordinate");
-
-        prm.declare_entry("Right X", "0.0",
-                          Patterns::Double(),
-                          "Right measuring point, X coordinate");
-
-        prm.declare_entry("Right Y", "0.0",
-                          Patterns::Double(),
-                          "Right measuring point, Y coordinate");
-
-        prm.declare_entry("Right Z", "0.0",
-                          Patterns::Double(),
-                          "Right measuring point, Z coordinate");
+        prm.declare_entry("Markers list file", "",
+                          Patterns::FileName(),
+                          "File including list of markers");
       }
       prm.leave_subsection();
     }
@@ -646,15 +617,7 @@ namespace Flexodeal
     {
       prm.enter_subsection("Measuring locations");
       {
-        x_left = prm.get_double("Left X");
-        y_left = prm.get_double("Left Y");
-        z_left = prm.get_double("Left Z");
-        x_mid = prm.get_double("Mid X");
-        y_mid = prm.get_double("Mid Y");
-        z_mid = prm.get_double("Mid Z");
-        x_right = prm.get_double("Right X");
-        y_right = prm.get_double("Right Y");
-        z_right = prm.get_double("Right Z");
+        markers_list_file = prm.get("Markers list file");
       }
       prm.leave_subsection();
     }
@@ -843,6 +806,27 @@ namespace Flexodeal
 
     return out;
   }
+
+  // @sect3{Marker class (measuring locations)}
+
+  // This is an extension of the Point<dim> class. Additional attributes are
+  // a label, a boolean used to track whether this point was found in the
+  // as a vertex in the mesh or not, and a global_dof_index which will be
+  // set during Solid<dim>::system_setup.
+  template <int dim>
+  struct Marker : public Point<dim>
+  {
+    Marker(const std::string label,
+           const Tensor<1, dim> location)
+      : Point<dim>(location)
+      , label(label)
+      , found(false)
+    {}
+
+    const std::string label;
+    bool found;
+    std::vector<dealii::types::global_dof_index> global_dof_index;
+  };
 
   // @sect3{Muscle tissue within a three-field formulation}
 
@@ -1851,14 +1835,7 @@ namespace Flexodeal
     get_total_solution(const BlockVector<double> &solution_delta) const;
 
     // Entities to store DOF information of measuring locations
-    std::vector<types::global_dof_index> global_dof_index_u_left;
-    std::vector<types::global_dof_index> global_dof_index_u_mid;
-    std::vector<types::global_dof_index> global_dof_index_u_right;
-
-    std::vector<types::global_dof_index> global_dof_index_y_left;
-    std::vector<types::global_dof_index> global_dof_index_y_right;
-    std::vector<types::global_dof_index> global_dof_index_z_top;
-    std::vector<types::global_dof_index> global_dof_index_z_bottom;
+    std::vector<Marker<dim>> markers;
 
     // Several outputs to assess our results. The first function 
     // below will call all the other ones.
@@ -1871,8 +1848,7 @@ namespace Flexodeal
     void output_stresses() const;
     void output_gearing_info() const;
     void output_activation_muscle_length();
-    void ouput_displacements_at_select_locations() const;
-    void output_bulging_info();
+    void output_displacements_at_select_locations() const;
 
     // Finally, some member variables that describe the current state: A
     // collection of the parameters used to describe the problem setup...
@@ -2618,88 +2594,87 @@ namespace Flexodeal
               << std::endl;
 
     // Now that the dof_handler structure has been set up, we find the
-    // global_dof_index corresponding to the left, middle, and right
-    // measuring locations
+    // global_dof_index corresponding to different markers listed by the
+    // user ("set Markers list file" in parameter file).
     {
       // First, we declare an exception in case one of the points
       // is not found as a vertex in the grid.
       DeclException1(
-      ExcEvaluationPointNotFound,
-      Point<dim>,
-      << "The evaluation point " << arg1
-      << " was not found among the vertices of the present grid.");
+        ExcEvaluationPointNotFound,
+        Marker<dim>,
+        << "The evaluation point \"" << arg1.label << "\" at " << arg1
+        << " was not found among the vertices of the present grid.");
 
-      bool found_left = false, found_mid = false, 
-        found_right = false, evaluation_points_found = false;
+      // Read line from file and push back a new marker
+      std::ifstream infile(parameters.markers_list_file);
+
+      // Raise an exception if file cannot be open (perhaps it does not
+      // even exist!).
+      if (infile.fail())
+        throw std::invalid_argument("Cannot open file: " 
+                + parameters.markers_list_file 
+                + ". Make sure the file exists and it has read permissions.");
       
-      Point<dim> p_left(parameters.x_left, parameters.y_left, parameters.z_left);
-      Point<dim> p_mid(parameters.x_mid, parameters.y_mid, parameters.z_mid);
-      Point<dim> p_right(parameters.x_right, parameters.y_right, parameters.z_right);
-      const double tol = 1e-14;
+      std::string label;
+      double x, y, z;
 
+      while (infile >> label >> x >> y >> z)
+        markers.push_back(Marker<dim>(label, Tensor<1,dim>({x,y,z})));
+      
+      const double tol = 1e-14;
+      const unsigned int n_markers = markers.size();
+
+      // Loop over cells until all points have been found, that is, 
+      // marker.found == true for every marker in markers vector.
       for (const auto &cell : dof_handler.active_cell_iterators())
       {
-        if (!evaluation_points_found)
+        if (!std::all_of(markers.begin(), 
+                         markers.end(), 
+                         [](const Marker<dim>& marker) { return marker.found; }))
         {
+          // Loop over cell vertices
           for (const auto vertex : cell->vertex_indices())
           {
-            if (!found_left)
-            {
-              Point<dim>    current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_left; /* Subtracting two Point<dim> returns a Tensor<1,dim> */
-              if (diff.norm() < tol)
-              {
-                global_dof_index_u_left.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_u_left.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_u_left.push_back(cell->vertex_dof_index(vertex,2));
-                found_left = true;
-              }
-            }
+            // Initialize vector to store distance from current 
+            // vertex to all the markers
+            std::vector<double> dist_to_markers(n_markers);
 
-            if (!found_mid)
-            {
-              Point<dim>    current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_mid;
-              if (diff.norm() < tol)
-              {
-                global_dof_index_u_mid.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_u_mid.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_u_mid.push_back(cell->vertex_dof_index(vertex,2));
-                found_mid = true;
-              }
-            }
+            // Compute distance from the current vertex to each marker
+            for (unsigned int k = 0; k < n_markers; ++k)
+              dist_to_markers[k] = markers[k].distance(cell->vertex(vertex));
 
-            if (!found_right)
+            // Identify the closest match. If distance < tol, this is the
+            // vertex we are looking for.
+            auto min_it = std::min_element(dist_to_markers.begin(),
+                                           dist_to_markers.end());
+            unsigned int idx_min = std::distance(dist_to_markers.begin(),
+                                                 min_it);
+            
+            if (dist_to_markers[idx_min] < tol && markers[idx_min].found == false)
             {
-              Point<dim>    current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point-p_right;
-              if (diff.norm() < tol)
-              {
-                global_dof_index_u_right.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_u_right.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_u_right.push_back(cell->vertex_dof_index(vertex,2));
-                found_right = true;
-              }
+              markers[idx_min].global_dof_index.push_back(cell->vertex_dof_index(vertex,0));
+              markers[idx_min].global_dof_index.push_back(cell->vertex_dof_index(vertex,1));
+              markers[idx_min].global_dof_index.push_back(cell->vertex_dof_index(vertex,2));
+              markers[idx_min].found = true;
             }
           }
-          
-          evaluation_points_found = found_left && found_mid && found_right;
         }
         else
-            break;
+          break;
       }
 
-      // Stop the program immediately if one of these points was not 
-      // found in the mesh
-      AssertThrow(found_left,  ExcEvaluationPointNotFound(p_left));
-      AssertThrow(found_mid,   ExcEvaluationPointNotFound(p_mid));
-      AssertThrow(found_right, ExcEvaluationPointNotFound(p_right));
-
-      std::cout << "\nMeasuring locations [m]:"
-                << "\n\t Left point:   " << p_left
-                << "\n\t Mid point:    " << p_mid
-                << "\n\t Right point:  " << p_right
-                << "\n" << std::endl;
+      // List the markers that have been found until it finds one that hasn't.
+      // If so, stop the program immediately.
+      std::cout << "\nMarkers detected [m]:";
+      for (const auto& marker : markers)
+      {
+        if (marker.found)
+          std::cout << "\n\t \"" << marker.label << "\" at " << marker;
+        else
+          AssertThrow(marker.found,
+                      ExcEvaluationPointNotFound(marker));
+      }
+      std::cout << "\n" << std::endl;
     }
 
     // Setup the sparsity pattern and tangent matrix
@@ -4383,8 +4358,7 @@ namespace Flexodeal
     output_stresses();
     output_gearing_info();
     output_activation_muscle_length();
-    ouput_displacements_at_select_locations();
-    output_bulging_info();
+    output_displacements_at_select_locations();
 
     timer.leave_subsection();
   }
@@ -5111,17 +5085,8 @@ namespace Flexodeal
   // anywhere in the geometry. The only requirement is that they MUST be
   // vertices of the current mesh. 
   template <int dim>
-  void Solid<dim>::ouput_displacements_at_select_locations() const
+  void Solid<dim>::output_displacements_at_select_locations() const
   {
-    Tensor<1,dim> u_left, u_mid, u_right;
-    
-    for (unsigned int i = 0; i < dim; i++)
-    {
-      u_left[i]  = solution_n(global_dof_index_u_left[i]);
-      u_mid[i]   = solution_n(global_dof_index_u_mid[i]);
-      u_right[i] = solution_n(global_dof_index_u_right[i]);
-    }
-
     std::ostringstream filename;
     filename << save_dir << "/displacements-" << dim << "d.csv";
     std::ofstream output;
@@ -5129,139 +5094,29 @@ namespace Flexodeal
     if (time.get_timestep() == 0)
     {
       output.open(filename.str());
-      output << "Time [s]"
-              << "," << "u left x [m]"
-              << "," << "u left y [m]"
-              << "," << "u left z [m]"
-              << "," << "u mid x [m]"
-              << "," << "u mid y [m]"
-              << "," << "u mid z [m]"
-              << "," << "u right x [m]"
-              << "," << "u right y [m]"
-              << "," << "u right z [m]"
-              << "," << "Muscle length [m]" << "\n";
+      output << "Time [s]";
+      for (const auto& marker : markers)
+        output << "," << marker.label << "_x [m]"
+               << "," << marker.label << "_y [m]"
+               << "," << marker.label << "_z [m]";
+      output << "\n";
     }
     else
       output.open(filename.str(), std::ios_base::app);
 
-    output << time.current() << std::fixed 
-           << std::setprecision(8) << std::scientific
-           << "," << u_left[0]
-           << "," << u_left[1]
-           << "," << u_left[2]
-           << "," << u_mid[0]
-           << "," << u_mid[1]
-           << "," << u_mid[2]
-           << "," << u_right[0]
-           << "," << u_right[1]
-           << "," << u_right[2] 
-           << "," << parameters.length << "\n";
-  }
-
-  template <int dim>
-  void Solid<dim>::output_bulging_info()
-  {
-    std::ostringstream filename;
-    filename << save_dir << "/bulging_data-" << dim << "d.csv";
-    std::ofstream output;
-
-    if (time.get_timestep() == 0)
+    output << time.current();
+    for (const auto& marker : markers)
     {
-      // Set global DOF info and create file
-      bool found_top = false, found_bottom = false,
-          found_left = false, found_right = false,
-          all_points_found = false;
-
-      Point<dim> p_top(parameters.length/2, parameters.width/2, parameters.height);
-      Point<dim> p_bottom(parameters.length/2, parameters.width/2, 0.0);
-      Point<dim> p_left(parameters.length/2, 0.0, parameters.height/2);
-      Point<dim> p_right(parameters.length/2, parameters.width, parameters.height/2);
-      const double tol = 1e-14;
-
-      for (const auto &cell : dof_handler.active_cell_iterators())
+      double u_at_marker;
+      for (unsigned int k = 0; k < dim; ++k)
       {
-        if (!all_points_found)
-        {
-          for (const auto vertex : cell->vertex_indices())
-          {
-            if (!found_top)
-            {
-              Point<dim> current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_top; /* Subtracting two Point<dim> returns a Tensor<1,dim> */
-              if (diff.norm() < tol)
-              {
-                global_dof_index_z_top.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_z_top.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_z_top.push_back(cell->vertex_dof_index(vertex,2));
-                found_top = true;
-              }
-            }
-
-            if (!found_bottom)
-            {
-              Point<dim> current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_bottom; /* Subtracting two Point<dim> returns a Tensor<1,dim> */
-              if (diff.norm() < tol)
-              {
-                global_dof_index_z_bottom.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_z_bottom.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_z_bottom.push_back(cell->vertex_dof_index(vertex,2));
-                found_bottom = true;
-              }
-            }
-
-            if (!found_left)
-            {
-              Point<dim> current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_left; /* Subtracting two Point<dim> returns a Tensor<1,dim> */
-              if (diff.norm() < tol)
-              {
-                global_dof_index_y_left.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_y_left.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_y_left.push_back(cell->vertex_dof_index(vertex,2));
-                found_left = true;
-              }
-            }
-
-            if (!found_right)
-            {
-              Point<dim> current_point = cell->vertex(vertex);
-              Tensor<1,dim> diff = current_point - p_right; /* Subtracting two Point<dim> returns a Tensor<1,dim> */
-              if (diff.norm() < tol)
-              {
-                global_dof_index_y_right.push_back(cell->vertex_dof_index(vertex,0));
-                global_dof_index_y_right.push_back(cell->vertex_dof_index(vertex,1));
-                global_dof_index_y_right.push_back(cell->vertex_dof_index(vertex,2));
-                found_left = true;
-              }
-            }
-          }
-
-          all_points_found = found_top && found_bottom && found_left && found_right;
-        }
-        else
-          break;
+        u_at_marker = solution_n(marker.global_dof_index[k]);
+        output << std::fixed << std::setprecision(8) << std::scientific
+               << "," << u_at_marker;
       }
-
-      // Create file
-      output.open(filename.str());
-      output << "Time [s]"
-            << "," << "u left [m]"
-            << "," << "u right [m]"
-            << "," << "u top [m]"
-            << "," << "u bottom [m]" << "\n";
     }
-    else
-      output.open(filename.str(), std::ios_base::app); // Append contents to existing file
-
-    output << time.current() << std::fixed
-           << std::setprecision(8) << std::scientific
-           << "," << solution_n(global_dof_index_y_left[1])
-           << "," << solution_n(global_dof_index_y_right[1])
-           << "," << solution_n(global_dof_index_z_top[2])
-           << "," << solution_n(global_dof_index_z_bottom[2]) << "\n";
+    output << "\n";
   }
-  
 } // End of namespace Flexodeal
 
 

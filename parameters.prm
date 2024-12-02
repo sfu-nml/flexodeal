@@ -164,18 +164,5 @@ subsection Measuring locations
     # the solver returns the error: "The evaluation point ... was not 
     # found among the vertices of the present grid."
 
-    # Left point coordinates [m]
-    set Left X = 0.0075
-    set Left Y = 0.005
-    set Left Z = 0.005
-    
-    # Middle point coordinates [m]
-    set Mid X  = 0.015
-    set Mid Y  = 0.005
-    set Mid Z  = 0.005
-
-    # Right point coordinates [m]
-    set Right X = 0.0225
-    set Right Y = 0.005
-    set Right Z = 0.005
+    set Markers list file = markers.dat
 end
