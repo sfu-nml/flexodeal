@@ -88,6 +88,14 @@ The next step is to attach physiological properties to each one of these points.
 
 Review the file ```sample_quadrature_point_data.csv``` to see how the QP file should look like.
 
+### New in version 0.2.1!
+
+To avoid opening and saving the file in an external program such as Microsoft Excel or LibreOffice Calc, you can use the bash file ```add_columns_to_qp_file.sh``` to add the necessary columns to the CSV file. For instance, the following command:
+```
+bash add_columns_to_qp_file.sh quadrature_point_data.csv max_iso_stress_muscle 200000 muscle_fibre_orientation_x 1 muscle_fibre_orientation_y 0 muscle_fibre_orientation_z 0 fat_fraction 0 tissue_id 1
+```
+would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, ```tissue_id```, and ```fat_fraction``` to the file ```quadrature_point_data.csv``` with values 200000, 1, 0, 0, 1, and 0 respectively.
+
 ## 3. Set up markers
 
 You may set a list of markers to track displacements at different points in the geometry. The list (by default, `markers.dat`, with the filename set in `parameters.prm` in the `Measuring locations` subsection) has four columns: the first one is a label and the other are the three components of the marker. Note that, in this context, a marker is a mesh vertex that contains displacement degrees of freedom. Therefore, every marker **must** be a vertex in the mesh. Check the file `markers.dat` to see the structure of this file. **If you do not know the location of any markers, just create an empty file with the name as given in `set Markers list file` inside `parameters.prm`.**
