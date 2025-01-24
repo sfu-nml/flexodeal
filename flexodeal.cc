@@ -2495,6 +2495,14 @@ namespace Flexodeal
     else
       gridin.read_msh(infile);
     infile.close();
+
+    // Scale triangulation (if necesssary) and compute the reference volume
+    GridTools::scale(parameters.scale, triangulation);
+    vol_reference = GridTools::volume(triangulation);
+    std::cout << "Geometry:"
+              << "\n\t Reference volume: " << vol_reference << " m^3"
+              << "\n\t Mass:             " << vol_reference * parameters.muscle_density << " kg"
+              << "\n" << std::endl;
   }
 
   // @sect4{Solid::output_qp_list}
@@ -2525,9 +2533,9 @@ namespace Flexodeal
         // Write them to file
         for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
         {
-          float qp_x = qp[q_point][0] / parameters.scale;
-          float qp_y = qp[q_point][1] / parameters.scale;
-          float qp_z = qp[q_point][2] / parameters.scale;
+          float qp_x = qp[q_point][0];
+          float qp_y = qp[q_point][1];
+          float qp_z = qp[q_point][2];
           output << std::scientific << std::setprecision(8) 
                  << qp_x << "," << qp_y << "," << qp_z <<"\n";
         }
@@ -2891,8 +2899,13 @@ namespace Flexodeal
           const Point<dim> qp_in_table(std::stod(tokens[0]),
                                        std::stod(tokens[1]),
                                        std::stod(tokens[2]));
-          const double distance = qp_in_table.distance(qp_in_list);
-          const bool qps_match = (distance < 1e-8);
+          // Compute the (relative) distance between the point in the deal.II 
+          // list and the point in the QP file.
+          const double distance = qp_in_table.distance(qp_in_list) / 
+                                  qp_in_list.distance(Point<dim>());
+          // The points are the same if they have at least the same first 4
+          // significant digits.
+          const bool qps_match = (distance < 1e-4);
           if (!qps_match)
             AssertThrow(qps_match,
                         ExcEvaluationPointNotFound(qp_in_table, qp_in_list));
