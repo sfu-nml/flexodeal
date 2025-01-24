@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./add_columns_inplace.sh file.csv col1 val1 col2 val2 ...
+# Usage: bash add_columns_to_qp_file.sh file.csv col1 val1 col2 val2 ...
 
 FILE=$1
 TEMP_FILE=$(mktemp)
