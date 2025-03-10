@@ -1078,7 +1078,7 @@ namespace Flexodeal
 
     double get_stretch() const
     {
-      return std::pow(det_F, 1/3) * stretch_bar;
+      return std::pow(det_F, 1.0/3.0) * stretch_bar;
     }
 
     double get_stretch_bar() const
@@ -1088,7 +1088,7 @@ namespace Flexodeal
 
     double get_strain_rate() const
     {
-      return std::pow(det_F, 1/3) * (strain_rate_bar + (1.0/dim) * (trace_d/strain_rate_naught) * stretch_bar);
+      return std::pow(det_F, 1.0/3.0) * (strain_rate_bar + (1.0/dim) * (trace_d/strain_rate_naught) * stretch_bar);
     }
 
     double get_strain_rate_bar() const
@@ -1098,7 +1098,7 @@ namespace Flexodeal
 
     Tensor<1, dim> get_orientation() const
     {
-      return std::pow(det_F, 1/3) * orientation;
+      return std::pow(det_F, 1.0/3.0) * orientation;
     }
 
     unsigned int get_tissue_id() const
