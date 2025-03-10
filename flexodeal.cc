@@ -1263,7 +1263,7 @@ namespace Flexodeal
         third_term  =   (1 / std::pow( stretch_bar ,3))
                       * sigma_naught_muscle
                       * activation_level
-                      * get_length_stress() * get_dstrain_rate_stress_dstrain_rate() * (1.0 / delta_t);
+                      * get_length_stress() * get_dstrain_rate_stress_dstrain_rate() * (1.0 / (strain_rate_naught * delta_t));
       }
 
       return (first_term + second_term + third_term) * 
