@@ -249,20 +249,39 @@ namespace Flexodeal
       std::string qp_list_filename;
       double muscle_density;
 
-      // Fibre properties
+      // Muscle fibre properties
       double max_iso_stress_muscle; 
       double kappa_muscle;
       double max_strain_rate; 
-      double muscle_fibre_orientation_x; 
-      double muscle_fibre_orientation_y; 
-      double muscle_fibre_orientation_z; 
 
-      // Base material properties
+      // Muscle base material properties
       double max_iso_stress_basematerial;
       double muscle_basematerial_factor; 
       double muscle_basemat_c1;
       double muscle_basemat_c2;
       double muscle_basemat_c3;
+
+      // Aponeurosis fibre properties
+      double max_iso_stress_aponeurosis;
+      double kappa_aponeurosis;
+
+      // Aponeurosis base material properties
+      double max_iso_stress_aponeurosis_basematerial;
+      double apo_basematerial_factor;
+      double apo_basemat_c1;
+      double apo_basemat_c2;
+      double apo_basemat_c3;
+
+      // Tendon fibre properties
+      double max_iso_stress_tendon;
+      double kappa_tendon;
+
+      // Tendon base material properties
+      double max_iso_stress_tendon_basematerial;
+      double tendon_basematerial_factor;
+      double tendon_basemat_c1;
+      double tendon_basemat_c2;
+      double tendon_basemat_c3;
 
       // Fat properties
       double kappa_fat;
@@ -288,7 +307,7 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Muscle tissue density");
 
-        // Fibre properties
+        // Muscle fibre properties
         prm.declare_entry("Sigma naught muscle", "2.0e5",
                           Patterns::Double(),
                           "Muscle maximum isometric stress");
@@ -301,19 +320,7 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Maximum muscle fibre strain rate");
         
-        prm.declare_entry("Muscle x component", "1.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation x direction");
-
-        prm.declare_entry("Muscle y component", "0.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation y direction");
-
-        prm.declare_entry("Muscle z component", "0.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation z direction");
-        
-        // Base material properties
+        // Muscle base material properties
         prm.declare_entry("Sigma naught base material", "2.0e5",
                           Patterns::Double(),
                           "Base material maximum isometric stress");
@@ -334,6 +341,67 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Muscle base material constant 3");
 
+        // Aponeurosis fibre properties
+        prm.declare_entry("Sigma naught aponeurosis", "2.0e5",
+                          Patterns::Double(),
+                          "Aponeurosis maximum isometric stress");
+
+        prm.declare_entry("Bulk modulus aponeurosis", "1.0e8",
+                          Patterns::Double(),
+                          "Aponeurosis kappa value");
+
+        // Aponeurosis base material properties
+        prm.declare_entry("Sigma naught aponeurosis base material", "2.0e5",
+                          Patterns::Double(),
+                          "Aponeurosis base material normalizing stress");
+
+        prm.declare_entry("Aponeurosis base material factor", "1.0",
+                          Patterns::Double(),
+                          "Fictitious aponeurosis base material multiplier");
+  
+        prm.declare_entry("Aponeurosis base material constant 1", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 1");
+
+        prm.declare_entry("Aponeurosis base material constant 2", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 2");
+
+        prm.declare_entry("Aponeurosis base material constant 3", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 3");
+
+        // Tendon fibre properties
+        prm.declare_entry("Sigma naught tendon", "2.0e5",
+                          Patterns::Double(),
+                          "Tendon maximum isometric stress");
+
+        prm.declare_entry("Bulk modulus tendon", "1.0e8",
+                          Patterns::Double(),
+                          "Tendon kappa value");
+
+        // Tendon base material properties
+        prm.declare_entry("Sigma naught tendon base material", "2.0e5",
+                          Patterns::Double(),
+                          "Tendon base material normalizing stress");
+
+        prm.declare_entry("Tendon base material factor", "1.0",
+                          Patterns::Double(),
+                          "Fictitious tendon base material multiplier");
+   
+        prm.declare_entry("Tendon base material constant 1", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 1");
+
+        prm.declare_entry("Tendon base material constant 2", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 2");
+
+        prm.declare_entry("Tendon base material constant 3", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 3");
+
+        // Fat properties
         prm.declare_entry("Bulk modulus fat", "1.0e+06",
                           Patterns::Double(),
                           "Bulk modulus fat");
@@ -359,15 +427,30 @@ namespace Flexodeal
         max_iso_stress_muscle   = prm.get_double("Sigma naught muscle");
         kappa_muscle            = prm.get_double("Bulk modulus muscle");
         max_strain_rate         = prm.get_double("Max strain rate");
-        muscle_fibre_orientation_x  = prm.get_double("Muscle x component"); 
-        muscle_fibre_orientation_y  = prm.get_double("Muscle y component"); 
-        muscle_fibre_orientation_z  = prm.get_double("Muscle z component");
 
         max_iso_stress_basematerial = prm.get_double("Sigma naught base material");
         muscle_basematerial_factor  = prm.get_double("Muscle base material factor");
         muscle_basemat_c1 = prm.get_double("Muscle base material constant 1"); 
         muscle_basemat_c2 = prm.get_double("Muscle base material constant 2"); 
         muscle_basemat_c3 = prm.get_double("Muscle base material constant 3"); 
+
+        max_iso_stress_aponeurosis = prm.get_double("Sigma naught aponeurosis");
+        kappa_aponeurosis = prm.get_double("Bulk modulus aponeurosis");
+
+        max_iso_stress_aponeurosis_basematerial = prm.get_double("Sigma naught aponeurosis base material");
+        apo_basematerial_factor = prm.get_double("Aponeurosis base material factor");
+        apo_basemat_c1 = prm.get_double("Aponeurosis base material constant 1");
+        apo_basemat_c2 = prm.get_double("Aponeurosis base material constant 2");
+        apo_basemat_c3 = prm.get_double("Aponeurosis base material constant 3");
+
+        max_iso_stress_tendon = prm.get_double("Sigma naught tendon");
+        kappa_tendon = prm.get_double("Bulk modulus tendon");
+
+        max_iso_stress_tendon_basematerial = prm.get_double("Sigma naught tendon base material");
+        tendon_basematerial_factor = prm.get_double("Tendon base material factor");
+        tendon_basemat_c1 = prm.get_double("Tendon base material constant 1");
+        tendon_basemat_c2 = prm.get_double("Tendon base material constant 2");
+        tendon_basemat_c3 = prm.get_double("Tendon base material constant 3");
 
         kappa_fat  = prm.get_double("Bulk modulus fat");
         fat_factor = prm.get_double("Fat factor");
@@ -4409,7 +4492,7 @@ namespace Flexodeal
     output_forces();
     output_mean_stretch_and_pennation();
     output_stresses();
-    output_gearing_info();
+    //output_gearing_info();
     output_activation_muscle_length();
     output_displacements_at_select_locations();
     output_cell_data_main_variables();
@@ -5050,7 +5133,8 @@ namespace Flexodeal
     mean_muscle_velocity = mean_muscle_velocity / volume_slab;
     mean_strain_rate = mean_strain_rate / volume_slab;
 
-    const double initial_fibre_length = parameters.height / parameters.muscle_fibre_orientation_z;
+    //const double initial_fibre_length = parameters.height / parameters.muscle_fibre_orientation_z;
+    const double initial_fibre_length = 0.0;
     const double strain_rate_naught = parameters.max_strain_rate;
 
     // Output time series:

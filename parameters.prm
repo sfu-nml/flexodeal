@@ -73,7 +73,7 @@ subsection Materials
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
 
-  # -------------- Fibre properties -----------------
+  # ----------------- Muscle fibre properties -------------------
 
   # Maximum isometric stress [Pa]
   set Sigma naught muscle = 2.0e5
@@ -84,12 +84,10 @@ subsection Materials
   # Maximum strain rate [1/s]
   set Max strain rate = 5.0
 
-  # Initial fibre orientation (must be a unit vector)
-  set Muscle x component = 0.86602540
-  set Muscle y component = 0.0
-  set Muscle z component = 0.50000000
+  # Initial fibre orientation (must be a unit vector):
+  # input via quadrature point table (CSV file)
   
-  # ----------- Base material properties ------------
+  # ------------ Muscle base material properties ----------------
 
   # Maximum isometric stress base material [Pa]
   # (which is usually equal to that of the muscle fibres)
@@ -104,7 +102,51 @@ subsection Materials
 	set Muscle base material constant 2 = 0.3662334826469149
 	set Muscle base material constant 3 = 0.0
 
-  # ------------------- Fat properties --------------
+  # -------------- Aponeurosis fibre properties -----------------
+
+  # Aponeurosis fibre normalizing stress [Pa]
+  set Sigma naught aponeurosis = 2.0e5
+
+  # Aponeurosis bulk modulus [Pa]
+  set Bulk modulus aponeurosis = 1.0e8
+
+  # ----------- Aponeurosis base material properties ------------
+
+  # Aponeurosis base material normalizing stress [Pa]
+  set Sigma naught aponeurosis base material = 2.0e5
+
+  # Aponeurosis base material "fudge" factor [nondimensional]
+  # Ideally this should be 1.
+  set Aponeurosis base material factor = 1.0
+
+  # Constants in Yeoh strain-energy function
+  set Aponeurosis base material constant 1 = 4.6896264975
+  set Aponeurosis base material constant 2 = -3.4551410975
+  set Aponeurosis base material constant 3 = 484.92055395
+
+  # ---------------- Tendon fibre properties --------------------
+
+  # Tendon fibre normalizing stress [Pa]
+  set Sigma naught tendon  = 2.0e5
+
+   # Tendon bulk modulus [Pa]
+  set Bulk modulus tendon = 1.0e8
+
+  # ------------- Tendon base material properties ---------------
+
+  # Tendon base material normalizing stress [Pa]
+  set Sigma naught tendon base material = 2.0e5
+
+  # Tendon base material "fudge" factor [nondimensional]
+  # Ideally this should be 1.
+  set Tendon base material factor = 1.0
+
+  # Constants in Yeoh strain-energy function
+  set Tendon base material constant 1 = 4.6896264975
+  set Tendon base material constant 2 = -3.4551410975
+  set Tendon base material constant 3 = 484.92055395
+
+  # ---------------------- Fat properties ------------------------
 
   # Bulk modulus fat [Pa]
   set Bulk modulus fat = 1.0e+07
