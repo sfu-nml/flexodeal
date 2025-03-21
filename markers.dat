@@ -1,7 +1,0 @@
-p1 0.0075 0.005 0.005
-p2 0.015  0.005 0.005
-p3 0.0225 0.005 0.005
-mid_section_top    0.015 0.005 0.01
-mid_section_bottom 0.015 0.005 0.00
-mid_section_left   0.015 0.00 0.005
-mid_section_right  0.015 0.01 0.005

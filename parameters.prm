@@ -20,14 +20,20 @@ subsection Geometry
   # Global refinement level
   set Global refinement   = 2
 
-   # Length of the muscle block [m]
-  set Length = 0.03
+  # Muscle length [m]
+  set Muscle length = 0.27
 
-  # Width of the muscle block [m]
-  set Width = 0.01
+  # Aponeurosis length [m]
+  set Aponeurosis length = 0.208
 
-  # Height of the muscle block [m]
-  set Height = 0.01
+  # Aponeurosis height [m]
+  set Aponeurosis height = 0.003
+
+  # Muscle width [m]
+  set Muscle width = 0.055
+
+  # Pennation angle muscle fibres [deg]
+  set Pennation angle = 20
 
   # Global grid scaling factor (note that this factor
   # scales the grid and nothing else)
