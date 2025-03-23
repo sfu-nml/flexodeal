@@ -33,7 +33,9 @@ subsection Geometry
   set Muscle width = 0.055
 
   # Pennation angle muscle fibres [deg]
-  set Pennation angle = 20
+  # This is the angle between the fibres and the line
+  # of action (LOA), which is taken here as the x-axis.
+  set Pennation angle = 15.3
 
   # Global grid scaling factor (note that this factor
   # scales the grid and nothing else)
@@ -74,7 +76,7 @@ end
 
 subsection Materials
   # QP information
-  set QP list filename = sample_quadrature_point_data.csv
+  set QP list filename = quadrature_point_data.csv
 
   # Density of muscle [kg/m^3]
   set Muscle density = 1060

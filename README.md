@@ -86,15 +86,15 @@ The next step is to attach physiological properties to each one of these points.
 
 > :warning: *The order of these columns does not matter, however, it is important to use the correct header name, otherwise, the code will throw an error.*
 
-Review the file ```sample_quadrature_point_data.csv``` to see how the QP file should look like.
+Review the file ```quadrature_point_data.csv``` to see how the QP file should look like.
 
 ### New in version 0.2.1!
 
 To avoid opening and saving the file in an external program such as Microsoft Excel or LibreOffice Calc, you can use the bash file ```add_columns_to_qp_file.sh``` to add the necessary columns to the CSV file. For instance, the following command:
 ```
-bash add_columns_to_qp_file.sh sample_quadrature_point_data.csv max_iso_stress_muscle 200000 muscle_fibre_orientation_x 0.86602540 muscle_fibre_orientation_y 0 muscle_fibre_orientation_z 0.5 fat_fraction 0 tissue_id 1
+bash add_columns_to_qp_file.sh quadrature_point_data.csv max_iso_stress_muscle 200000 muscle_fibre_orientation_x 0.939692620785908 muscle_fibre_orientation_y 0 muscle_fibre_orientation_z 0.342020143325669 fat_fraction 0
 ```
-would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, ```fat_fraction```, and ```tissue_id``` to the file ```quadrature_point_data.csv``` with values 200000, 0.86602540, 0, 0.5, 0, and 1 respectively.
+would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, and ```fat_fraction``` to the file ```quadrature_point_data.csv``` with values 200000, 0.939692620785908, 0, 0.342020143325669, and 0, respectively.
 
 ## 3. Set up markers
 
