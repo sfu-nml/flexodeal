@@ -76,7 +76,7 @@ end
 
 subsection Materials
   # QP information
-  set QP list filename = quadrature_point_data.csv
+  set QP list filename = quadrature_point_data_2.csv
 
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
@@ -194,10 +194,10 @@ subsection Time
   # End time [s]
   # To obtain data for the very last time step, add 1e-08 to
   # the desired end time
-  set End time       = 0.50000001
+  set End time       = 1.00000001
 
   # Time step size [s]
-  set Time step size = 0.025
+  set Time step size = 0.01
 end
 
 
