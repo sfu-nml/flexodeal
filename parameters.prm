@@ -75,7 +75,10 @@ end
 
 
 subsection Materials
-  # QP information
+  # Quadrature point (QP) information.
+  # Make sure to use the right QP file! Each mesh
+  # yields a different list of quadrature points,
+  # so this file must be updated accordingly.
   set QP list filename = quadrature_point_data_2.csv
 
   # Density of muscle [kg/m^3]
@@ -242,5 +245,5 @@ subsection Output binary files
     #          tau_muscle_active_1_1, tau_muscle_active_1_2, tau_muscle_active_1_3, tau_muscle_active_2_1, tau_muscle_active_2_2, tau_muscle_active_2_3, tau_muscle_active_3_1, tau_muscle_active_3_2, tau_muscle_active_3_3,
     #          tau_muscle_passive_1_1, tau_muscle_passive_1_2, tau_muscle_passive_1_3, tau_muscle_passive_2_1, tau_muscle_passive_2_2, tau_muscle_passive_2_3, tau_muscle_passive_3_1, tau_muscle_passive_3_2, tau_muscle_passive_3_3,
     #          tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3
-    set Output binary files tensors = true
+    set Output binary files tensors = false
 end
