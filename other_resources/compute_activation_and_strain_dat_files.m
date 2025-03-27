@@ -5,6 +5,11 @@
 % Ross, S. A., Domínguez, S., Nigam, N., & Wakeling, J. M. (2021). 
 % The energy of muscle contraction. III. Kinetic energy during cyclic 
 % contractions. Frontiers in physiology, 12, 628819.
+%
+% Author: Javier Almonacid
+%         Neuromuscular Mechanics Laboratory
+%         Simon Fraser University
+%         March 27, 2025
 clear; close all; clc;
 
 % Create time discretization
@@ -54,7 +59,6 @@ plot(time, excitation, 'LineWidth', 2)
 hold on
 plot(time, activation, 'LineWidth', 2)
 
-
 % The function below has been retrieved from:
 % https://github.com/javieralmonacid/multibody-muscle-1d/blob/main/tools/zajac_activation_from_emg.m
 function recorded_activation = zajac_activation_from_emg(recorded_time, ...
@@ -89,7 +93,8 @@ function recorded_activation = zajac_activation_from_emg(recorded_time, ...
 end
 
 function s = square_wave(t,freq,duty_cycle)
-    % Create a square wave
+    % Create a square wave without the need of Matlab's signal processing
+    % toolbox
     tmp = mod(t,1/freq);
     w0 = (1/freq)*duty_cycle; % Pulse width
     s = (tmp < w0);

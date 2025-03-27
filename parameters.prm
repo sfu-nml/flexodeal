@@ -79,7 +79,7 @@ subsection Materials
   # Make sure to use the right QP file! Each mesh
   # yields a different list of quadrature points,
   # so this file must be updated accordingly.
-  set QP list filename = quadrature_point_data_2.csv
+  set QP list filename = qp_files/quadrature_point_data_2.csv
 
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
