@@ -119,7 +119,7 @@ subsection Materials
   set Sigma naught aponeurosis = 2.0e5
 
   # Aponeurosis bulk modulus [Pa]
-  set Bulk modulus aponeurosis = 1.0e8
+  set Bulk modulus aponeurosis = 1.0e7
 
   # ----------- Aponeurosis base material properties ------------
 
