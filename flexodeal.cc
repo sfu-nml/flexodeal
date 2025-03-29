@@ -180,9 +180,11 @@ namespace Flexodeal
     struct Geometry
     {
       unsigned int global_refinement;
-      double       length;
-      double       width;
-      double       height;
+      double       muscle_length;
+      double       aponeurosis_length;
+      double       aponeurosis_height;
+      double       muscle_width;
+      double       pennation_angle;
       double       scale;
       double       p_p0;
 
@@ -200,17 +202,25 @@ namespace Flexodeal
                           Patterns::Integer(0),
                           "Global refinement level");
         
-        prm.declare_entry("Length", "1.0",
+        prm.declare_entry("Muscle length", "1.0",
                           Patterns::Double(0.0),
-                          "Length in the x direction");
+                          "Muscle length (x direction)");
 
-        prm.declare_entry("Width", "1.0",
+        prm.declare_entry("Aponeurosis length", "1.0",
                           Patterns::Double(0.0),
-                          "Width in the y direction");
+                          "Aponeurosis length");
 
-        prm.declare_entry("Height", "1.0",
+        prm.declare_entry("Aponeurosis height", "1.0",
                           Patterns::Double(0.0),
-                          "Height in the z direction");
+                          "Aponeurosis height");
+
+        prm.declare_entry("Muscle width", "1.0",
+                          Patterns::Double(0.0),
+                          "Muscle width (y direction)");
+
+        prm.declare_entry("Pennation angle", "0.0",
+                          Patterns::Double(0.0),
+                          "Pennation angle (angle between fibres and LOA)");
 
         prm.declare_entry("Grid scale",
                           "1e-3",
@@ -230,9 +240,11 @@ namespace Flexodeal
       prm.enter_subsection("Geometry");
       {
         global_refinement = prm.get_integer("Global refinement");
-        length            = prm.get_double("Length"); 
-        width             = prm.get_double("Width"); 
-        height            = prm.get_double("Height");
+        muscle_length     = prm.get_double("Muscle length");
+        aponeurosis_length = prm.get_double("Aponeurosis length");
+        aponeurosis_height = prm.get_double("Aponeurosis height");
+        muscle_width      = prm.get_double("Muscle width");
+        pennation_angle   = prm.get_double("Pennation angle") * M_PI / 180.0;
         scale             = prm.get_double("Grid scale");
         p_p0              = prm.get_double("Pressure ratio p/p0");
       }
@@ -249,20 +261,39 @@ namespace Flexodeal
       std::string qp_list_filename;
       double muscle_density;
 
-      // Fibre properties
+      // Muscle fibre properties
       double max_iso_stress_muscle; 
       double kappa_muscle;
       double max_strain_rate; 
-      double muscle_fibre_orientation_x; 
-      double muscle_fibre_orientation_y; 
-      double muscle_fibre_orientation_z; 
 
-      // Base material properties
+      // Muscle base material properties
       double max_iso_stress_basematerial;
       double muscle_basematerial_factor; 
       double muscle_basemat_c1;
       double muscle_basemat_c2;
       double muscle_basemat_c3;
+
+      // Aponeurosis fibre properties
+      double max_iso_stress_aponeurosis;
+      double kappa_aponeurosis;
+
+      // Aponeurosis base material properties
+      double max_iso_stress_aponeurosis_basematerial;
+      double apo_basematerial_factor;
+      double apo_basemat_c1;
+      double apo_basemat_c2;
+      double apo_basemat_c3;
+
+      // Tendon fibre properties
+      double max_iso_stress_tendon;
+      double kappa_tendon;
+
+      // Tendon base material properties
+      double max_iso_stress_tendon_basematerial;
+      double tendon_basematerial_factor;
+      double tendon_basemat_c1;
+      double tendon_basemat_c2;
+      double tendon_basemat_c3;
 
       // Fat properties
       double kappa_fat;
@@ -288,7 +319,7 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Muscle tissue density");
 
-        // Fibre properties
+        // Muscle fibre properties
         prm.declare_entry("Sigma naught muscle", "2.0e5",
                           Patterns::Double(),
                           "Muscle maximum isometric stress");
@@ -301,19 +332,7 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Maximum muscle fibre strain rate");
         
-        prm.declare_entry("Muscle x component", "1.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation x direction");
-
-        prm.declare_entry("Muscle y component", "0.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation y direction");
-
-        prm.declare_entry("Muscle z component", "0.0",
-                          Patterns::Double(0.0),
-                          "Muscle fibre orientation z direction");
-        
-        // Base material properties
+        // Muscle base material properties
         prm.declare_entry("Sigma naught base material", "2.0e5",
                           Patterns::Double(),
                           "Base material maximum isometric stress");
@@ -334,6 +353,67 @@ namespace Flexodeal
                           Patterns::Double(),
                           "Muscle base material constant 3");
 
+        // Aponeurosis fibre properties
+        prm.declare_entry("Sigma naught aponeurosis", "2.0e5",
+                          Patterns::Double(),
+                          "Aponeurosis maximum isometric stress");
+
+        prm.declare_entry("Bulk modulus aponeurosis", "1.0e8",
+                          Patterns::Double(),
+                          "Aponeurosis kappa value");
+
+        // Aponeurosis base material properties
+        prm.declare_entry("Sigma naught aponeurosis base material", "2.0e5",
+                          Patterns::Double(),
+                          "Aponeurosis base material normalizing stress");
+
+        prm.declare_entry("Aponeurosis base material factor", "1.0",
+                          Patterns::Double(),
+                          "Fictitious aponeurosis base material multiplier");
+  
+        prm.declare_entry("Aponeurosis base material constant 1", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 1");
+
+        prm.declare_entry("Aponeurosis base material constant 2", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 2");
+
+        prm.declare_entry("Aponeurosis base material constant 3", "0.0",
+                          Patterns::Double(),
+                          "Aponeurosis base material constant 3");
+
+        // Tendon fibre properties
+        prm.declare_entry("Sigma naught tendon", "2.0e5",
+                          Patterns::Double(),
+                          "Tendon maximum isometric stress");
+
+        prm.declare_entry("Bulk modulus tendon", "1.0e8",
+                          Patterns::Double(),
+                          "Tendon kappa value");
+
+        // Tendon base material properties
+        prm.declare_entry("Sigma naught tendon base material", "2.0e5",
+                          Patterns::Double(),
+                          "Tendon base material normalizing stress");
+
+        prm.declare_entry("Tendon base material factor", "1.0",
+                          Patterns::Double(),
+                          "Fictitious tendon base material multiplier");
+   
+        prm.declare_entry("Tendon base material constant 1", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 1");
+
+        prm.declare_entry("Tendon base material constant 2", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 2");
+
+        prm.declare_entry("Tendon base material constant 3", "0.0",
+                          Patterns::Double(),
+                          "Tendon base material constant 3");
+
+        // Fat properties
         prm.declare_entry("Bulk modulus fat", "1.0e+06",
                           Patterns::Double(),
                           "Bulk modulus fat");
@@ -359,15 +439,30 @@ namespace Flexodeal
         max_iso_stress_muscle   = prm.get_double("Sigma naught muscle");
         kappa_muscle            = prm.get_double("Bulk modulus muscle");
         max_strain_rate         = prm.get_double("Max strain rate");
-        muscle_fibre_orientation_x  = prm.get_double("Muscle x component"); 
-        muscle_fibre_orientation_y  = prm.get_double("Muscle y component"); 
-        muscle_fibre_orientation_z  = prm.get_double("Muscle z component");
 
         max_iso_stress_basematerial = prm.get_double("Sigma naught base material");
         muscle_basematerial_factor  = prm.get_double("Muscle base material factor");
         muscle_basemat_c1 = prm.get_double("Muscle base material constant 1"); 
         muscle_basemat_c2 = prm.get_double("Muscle base material constant 2"); 
         muscle_basemat_c3 = prm.get_double("Muscle base material constant 3"); 
+
+        max_iso_stress_aponeurosis = prm.get_double("Sigma naught aponeurosis");
+        kappa_aponeurosis = prm.get_double("Bulk modulus aponeurosis");
+
+        max_iso_stress_aponeurosis_basematerial = prm.get_double("Sigma naught aponeurosis base material");
+        apo_basematerial_factor = prm.get_double("Aponeurosis base material factor");
+        apo_basemat_c1 = prm.get_double("Aponeurosis base material constant 1");
+        apo_basemat_c2 = prm.get_double("Aponeurosis base material constant 2");
+        apo_basemat_c3 = prm.get_double("Aponeurosis base material constant 3");
+
+        max_iso_stress_tendon = prm.get_double("Sigma naught tendon");
+        kappa_tendon = prm.get_double("Bulk modulus tendon");
+
+        max_iso_stress_tendon_basematerial = prm.get_double("Sigma naught tendon base material");
+        tendon_basematerial_factor = prm.get_double("Tendon base material factor");
+        tendon_basemat_c1 = prm.get_double("Tendon base material constant 1");
+        tendon_basemat_c2 = prm.get_double("Tendon base material constant 2");
+        tendon_basemat_c3 = prm.get_double("Tendon base material constant 3");
 
         kappa_fat  = prm.get_double("Bulk modulus fat");
         fat_factor = prm.get_double("Fat factor");
@@ -976,13 +1071,19 @@ namespace Flexodeal
       trace_b_bar                = first_invariant(b_bar);
       
       // Update stretch_bar and strain_rate_bar using the current Newton iterate.
-      const SymmetricTensor<2,dim> symm_grad_velocity = Physics::Elasticity::Kinematics::d(F,grad_velocity);
-      const Tensor<2,dim> dev_symm_grad_velocity      = Physics::Elasticity::StandardTensors<dim>::dev_P * symm_grad_velocity;
-      trace_d         = first_invariant(symm_grad_velocity);
       orientation     = F_bar * initial_fibre_orientation;
       stretch_bar     = std::sqrt(orientation * orientation);
-      strain_rate_bar = (1.0 / strain_rate_naught) * 
-                         orientation * (dev_symm_grad_velocity * orientation) / stretch_bar;
+      if (tissue_id == 1)
+      {
+        const SymmetricTensor<2,dim> 
+        symm_grad_velocity = Physics::Elasticity::Kinematics::d(F,grad_velocity);
+        const Tensor<2,dim> 
+        dev_symm_grad_velocity = Physics::Elasticity::StandardTensors<dim>::dev_P * symm_grad_velocity;
+        trace_d = first_invariant(symm_grad_velocity);
+      
+        strain_rate_bar = (1.0 / strain_rate_naught) * 
+                          orientation * (dev_symm_grad_velocity * orientation) / stretch_bar;
+      }
     }
 
     // The second function determines the Kirchhoff stress $\boldsymbol{\tau}
@@ -1145,29 +1246,50 @@ namespace Flexodeal
     // $\overline{\boldsymbol{\tau}}$:
     SymmetricTensor<2, dim> get_tau_bar() const
     {
-      return (1 - fat_fraction) * (get_tau_muscle_active_bar() + get_tau_muscle_passive_bar() + get_tau_muscle_basematerial_bar()) 
-             + fat_fraction * get_tau_fat_bar();
+      if (tissue_id == 1)
+        return (1 - fat_fraction) * (get_tau_muscle_active_bar() + get_tau_muscle_passive_bar() + get_tau_muscle_basematerial_bar()) 
+          + fat_fraction * get_tau_fat_bar();
+      else
+        return get_tau_muscle_passive_bar() + get_tau_muscle_basematerial_bar();
     }
 
     // Determine the contributions from active and passive muscle fibres,
     // as well as from the base material:
     SymmetricTensor<2, dim> get_tau_muscle_active_bar() const
     {
-      const double active_level = fibre_time_activation;
-      double sigma_active_muscle_fibre = 0.0;
+      if (tissue_id == 1)
+      {
+        const double active_level = fibre_time_activation;
+        double sigma_active_muscle_fibre = 0.0;
+        
+        if (type_of_contraction == "quasi-static")
+          sigma_active_muscle_fibre = sigma_naught_muscle * active_level * get_length_stress() * 1.0;
+        else if (type_of_contraction == "dynamic")
+          sigma_active_muscle_fibre = sigma_naught_muscle * active_level * get_length_stress() * get_strain_rate_stress();
+        
+        return (1.0 / std::pow(stretch_bar, 2)) * sigma_active_muscle_fibre *
+                symmetrize(outer_product(orientation,orientation));
+      }
+      else
+        return SymmetricTensor<2,dim>();
       
-      if (type_of_contraction == "quasi-static")
-        sigma_active_muscle_fibre = sigma_naught_muscle * active_level * get_length_stress() * 1.0;
-      else if (type_of_contraction == "dynamic")
-        sigma_active_muscle_fibre = sigma_naught_muscle * active_level * get_length_stress() * get_strain_rate_stress();
-      
-      return (1.0 / std::pow(stretch_bar, 2)) * sigma_active_muscle_fibre *
-               symmetrize(outer_product(orientation,orientation));
     }
 
     SymmetricTensor<2, dim> get_tau_muscle_passive_bar() const
     {
-      const double sigma_passive_muscle_fibre = sigma_naught_muscle * get_passive_stress();
+      double sigma_passive_muscle_fibre = 0.0;
+      switch (tissue_id)
+      {
+        case 1:
+          sigma_passive_muscle_fibre = sigma_naught_muscle * get_passive_stress();
+          break;
+        case 2:
+          sigma_passive_muscle_fibre = sigma_naught_muscle * get_aponeurosis_stress();
+          break;
+        case 3:
+          sigma_passive_muscle_fibre = sigma_naught_muscle * get_tendon_stress();
+          break;
+      }
       return (1.0 / std::pow(stretch_bar,2)) * sigma_passive_muscle_fibre * 
                 symmetrize(outer_product(orientation,orientation));
     }
@@ -1181,7 +1303,10 @@ namespace Flexodeal
 
     SymmetricTensor<2, dim> get_tau_fat_bar() const
     {
-      return 2 * s_base_fat * c1_fat * b_bar;
+      if (tissue_id == 1)
+        return 2 * s_base_fat * c1_fat * b_bar;
+      else
+        return SymmetricTensor<2,dim>();
     }
 
     // Calculate the volumetric part of the tangent $J
@@ -1220,67 +1345,91 @@ namespace Flexodeal
     // to the tangent matrix.
     SymmetricTensor<4, dim> get_c_bar() const
     {
-      return (1 - fat_fraction) * (get_c_muscle_active_bar() + get_c_muscle_passive_bar() + get_c_muscle_basematerial_bar())
-             + fat_fraction * get_c_fat_bar();
+      if (tissue_id == 1)
+        return (1 - fat_fraction) * (get_c_muscle_active_bar() + get_c_muscle_passive_bar() + get_c_muscle_basematerial_bar())
+          + fat_fraction * get_c_fat_bar();
+      else
+        return get_c_muscle_passive_bar() + get_c_muscle_basematerial_bar();
     }
 
     SymmetricTensor<4, dim> get_c_muscle_active_bar() const
     {
-      const double activation_level = fibre_time_activation;
-      const SymmetricTensor<2, dim> 
-        orientation_x_orientation = symmetrize(outer_product(orientation,orientation));
-
-      double first_term = 0.0, second_term = 0.0, third_term = 0.0;
-
-      if (type_of_contraction == "quasi-static")
+      if (tissue_id == 1)
       {
-        first_term  = - (2 / std::pow( stretch_bar ,4))
-                    * sigma_naught_muscle
-                    * activation_level
-                    * get_length_stress()
-                    * 1.0;
+        const double activation_level = fibre_time_activation;
+        const SymmetricTensor<2, dim> 
+          orientation_x_orientation = symmetrize(outer_product(orientation,orientation));
 
-        second_term = (1 / std::pow( stretch_bar ,3))
-                    * sigma_naught_muscle
-                    * activation_level
-                    * get_dlength_stress_dstretch() * 1.0;
-        
-        third_term = 0.0;
-      }
-      else if (type_of_contraction == "dynamic")
-      {
-        first_term  = - (2 / std::pow( stretch_bar ,4))
+        double first_term = 0.0, second_term = 0.0, third_term = 0.0;
+
+        if (type_of_contraction == "quasi-static")
+        {
+          first_term  = - (2 / std::pow( stretch_bar ,4))
                       * sigma_naught_muscle
                       * activation_level
                       * get_length_stress()
-                      * get_strain_rate_stress();
-        
-        second_term =   (1 / std::pow( stretch_bar ,3))
-                      * sigma_naught_muscle
-                      * activation_level
-                      * get_dlength_stress_dstretch() * get_strain_rate_stress();
-        
-        third_term  =   (1 / std::pow( stretch_bar ,3))
-                      * sigma_naught_muscle
-                      * activation_level
-                      * get_length_stress() * get_dstrain_rate_stress_dstrain_rate() * (1.0 / (strain_rate_naught * delta_t));
-      }
+                      * 1.0;
 
-      return (first_term + second_term + third_term) * 
-        outer_product(orientation_x_orientation,orientation_x_orientation);
-    }
+          second_term = (1 / std::pow( stretch_bar ,3))
+                      * sigma_naught_muscle
+                      * activation_level
+                      * get_dlength_stress_dstretch() * 1.0;
+          
+          third_term = 0.0;
+        }
+        else if (type_of_contraction == "dynamic")
+        {
+          first_term  = - (2 / std::pow( stretch_bar ,4))
+                        * sigma_naught_muscle
+                        * activation_level
+                        * get_length_stress()
+                        * get_strain_rate_stress();
+          
+          second_term =   (1 / std::pow( stretch_bar ,3))
+                        * sigma_naught_muscle
+                        * activation_level
+                        * get_dlength_stress_dstretch() * get_strain_rate_stress();
+          
+          third_term  =   (1 / std::pow( stretch_bar ,3))
+                        * sigma_naught_muscle
+                        * activation_level
+                        * get_length_stress() * get_dstrain_rate_stress_dstrain_rate() * (1.0 / (strain_rate_naught * delta_t));
+        }
+
+        return (first_term + second_term + third_term) * 
+          outer_product(orientation_x_orientation,orientation_x_orientation);
+      }
+      else
+        return SymmetricTensor<4,dim>();
+    } 
 
     SymmetricTensor<4, dim> get_c_muscle_passive_bar() const
     {
       const SymmetricTensor<2, dim> 
         orientation_x_orientation = symmetrize(outer_product(orientation,orientation));
       
+      double sigma_passive_muscle_fibre = 0.0;
+      double d_sigma_passive_muscle_fibre = 0.0;
+      switch (tissue_id)
+      {
+        case 1:
+          sigma_passive_muscle_fibre   = sigma_naught_muscle * get_passive_stress();
+          d_sigma_passive_muscle_fibre = sigma_naught_muscle * get_dpassive_stress_dstretch();
+          break;
+        case 2:
+          sigma_passive_muscle_fibre   = sigma_naught_muscle * get_aponeurosis_stress();
+          d_sigma_passive_muscle_fibre = sigma_naught_muscle * get_daponeurosis_stress_dstretch();
+          break;
+        case 3:
+          sigma_passive_muscle_fibre   = sigma_naught_muscle * get_tendon_stress();
+          d_sigma_passive_muscle_fibre = sigma_naught_muscle * get_dtendon_stress_dstretch();
+          break;
+      }
+      
       const double first_term  = - (2 / std::pow( stretch_bar ,4))
-                               * sigma_naught_muscle
-                               * get_passive_stress();
+                                 * sigma_passive_muscle_fibre;
       const double second_term =   (1 / std::pow( stretch_bar ,3))
-                                * sigma_naught_muscle
-                                * get_dpassive_stress_dstretch();
+                                 * d_sigma_passive_muscle_fibre;
 
       return (first_term + second_term) * 
         outer_product(orientation_x_orientation,orientation_x_orientation);
@@ -1412,6 +1561,70 @@ namespace Flexodeal
       else
         return 0.0;
     }
+
+    double get_aponeurosis_stress() const
+    {
+      if (stretch_bar >= 0 && stretch_bar < 1.0)
+        return 0.01 * stretch_bar;
+      else if (stretch_bar >= 1.0 && stretch_bar < 1.01)
+        return 515.8820342030662 * std::pow((stretch_bar - 1.0),2) + 0.01 * (stretch_bar - 1.0) + 0.01;
+      else if (stretch_bar >= 1.01 && stretch_bar < 1.02)
+        return 600.5902422602494 * std::pow((stretch_bar - 1.01),2) + 10.327640684061333 * (stretch_bar - 1.01) + 0.06168820342030671;
+      else if (stretch_bar >= 1.02 && stretch_bar < 1.15)
+        return -9.97532175746044 * std::pow((stretch_bar - 1.02),2) + 22.33944552926633 * (stretch_bar - 1.02) + 0.22502363448694518;
+      else if (stretch_bar >= 1.15)
+        return 19.745861872326614 * (stretch_bar - 1.15) + 2.9605686155904847;
+      else
+        return 0.0;
+    }
+
+    double get_daponeurosis_stress_dstretch() const
+    {
+      if (stretch_bar >= 0 && stretch_bar < 1.0)
+        return 0.01;
+      else if (stretch_bar >= 1.0 && stretch_bar < 1.01)
+        return (2 * 515.8820342030662 * (stretch_bar - 1.0) + 0.01);
+      else if (stretch_bar >= 1.01 && stretch_bar < 1.02)
+        return (2 * 600.5902422602494 * (stretch_bar - 1.01) + 10.327640684061333);
+      else if (stretch_bar >= 1.02 && stretch_bar < 1.15)
+        return (2 * -9.97532175746044 * (stretch_bar - 1.02) + 22.33944552926633);
+      else if (stretch_bar >= 1.15)
+        return (19.745861872326614);
+      else
+        return 0.0;
+    }
+
+    double get_tendon_stress() const
+    {
+      if (stretch_bar >= 0 && stretch_bar < 1.0)
+        return 0.01 * stretch_bar;
+      else if (stretch_bar >= 1.0 && stretch_bar < 1.01)
+        return 515.8820342030662 * std::pow((stretch_bar - 1.0),2) + 0.01 * (stretch_bar - 1.0) + 0.01;
+      else if (stretch_bar >= 1.01 && stretch_bar < 1.02)
+        return 600.5902422602494 * std::pow((stretch_bar - 1.01),2) + 10.327640684061333 * (stretch_bar - 1.01) + 0.06168820342030671;
+      else if (stretch_bar >= 1.02 && stretch_bar < 1.15)
+        return -9.97532175746044 * std::pow((stretch_bar - 1.02),2) + 22.33944552926633 * (stretch_bar - 1.02) + 0.22502363448694518;
+      else if (stretch_bar >= 1.15)
+        return 19.745861872326614 * (stretch_bar - 1.15) + 2.9605686155904847;
+      else
+        return 0.0;
+    }
+
+    double get_dtendon_stress_dstretch() const
+    {
+      if (stretch_bar >= 0 && stretch_bar < 1.0)
+        return 0.01;
+      else if (stretch_bar >= 1.0 && stretch_bar < 1.01)
+        return (2 * 515.8820342030662 * (stretch_bar - 1.0) + 0.01);
+      else if (stretch_bar >= 1.01 && stretch_bar < 1.02)
+        return (2 * 600.5902422602494 * (stretch_bar - 1.01) + 10.327640684061333);
+      else if (stretch_bar >= 1.02 && stretch_bar < 1.15)
+        return (2 * -9.97532175746044 * (stretch_bar - 1.02) + 22.33944552926633);
+      else if (stretch_bar >= 1.15)
+        return (19.745861872326614);
+      else
+        return 0.0;
+    }
   };
 
   // @sect3{Quadrature point history}
@@ -1459,27 +1672,75 @@ namespace Flexodeal
     void setup_lqp(const Parameters::AllParameters &parameters,
                    const std::map<std::string, double> &qp_data)
     { 
+      const unsigned int tissue_id = qp_data.at("tissue_id");
+
       try
       {
-        material =
-        std::make_shared<Muscle_Tissues_Three_Field<dim>>(
-          parameters.type_of_simulation,
-          qp_data.at("tissue_id"),
-          qp_data.at("max_iso_stress_muscle"),
-          parameters.kappa_muscle,
-          parameters.kappa_fat,
-          parameters.max_strain_rate,
-          qp_data.at("muscle_fibre_orientation_x"),
-          qp_data.at("muscle_fibre_orientation_y"),
-          qp_data.at("muscle_fibre_orientation_z"),
-          parameters.max_iso_stress_basematerial,
-          parameters.muscle_basematerial_factor,
-          parameters.muscle_basemat_c1,
-          parameters.muscle_basemat_c2,
-          parameters.muscle_basemat_c3,
-          parameters.fat_factor,
-          parameters.fat_c1,
-          qp_data.at("fat_fraction"));
+        switch (tissue_id)
+        {
+          case 1:
+            material = std::make_shared<Muscle_Tissues_Three_Field<dim>>(
+                        parameters.type_of_simulation,
+                        tissue_id,
+                        qp_data.at("max_iso_stress_muscle"),
+                        parameters.kappa_muscle,
+                        parameters.kappa_fat,
+                        parameters.max_strain_rate,
+                        qp_data.at("muscle_fibre_orientation_x"),
+                        qp_data.at("muscle_fibre_orientation_y"),
+                        qp_data.at("muscle_fibre_orientation_z"),
+                        parameters.max_iso_stress_basematerial,
+                        parameters.muscle_basematerial_factor,
+                        parameters.muscle_basemat_c1,
+                        parameters.muscle_basemat_c2,
+                        parameters.muscle_basemat_c3,
+                        parameters.fat_factor,
+                        parameters.fat_c1,
+                        qp_data.at("fat_fraction"));
+            break;
+          case 2:
+            material = std::make_shared<Muscle_Tissues_Three_Field<dim>>(
+                        parameters.type_of_simulation,
+                        tissue_id,
+                        parameters.max_iso_stress_aponeurosis,
+                        parameters.kappa_aponeurosis,
+                        0.0,
+                        parameters.max_strain_rate, /*can't divide by zero*/
+                        qp_data.at("muscle_fibre_orientation_x"),
+                        qp_data.at("muscle_fibre_orientation_y"),
+                        qp_data.at("muscle_fibre_orientation_z"),
+                        parameters.max_iso_stress_aponeurosis_basematerial,
+                        parameters.apo_basematerial_factor,
+                        parameters.apo_basemat_c1,
+                        parameters.apo_basemat_c2,
+                        parameters.apo_basemat_c3,
+                        0.0,
+                        0.0,
+                        0.0);
+            break;
+          case 3:
+            material = std::make_shared<Muscle_Tissues_Three_Field<dim>>(
+                        parameters.type_of_simulation,
+                        tissue_id,
+                        parameters.max_iso_stress_tendon,
+                        parameters.kappa_tendon,
+                        0.0,
+                        parameters.max_strain_rate, /*can't divide by zero*/
+                        qp_data.at("muscle_fibre_orientation_x"),
+                        qp_data.at("muscle_fibre_orientation_y"),
+                        qp_data.at("muscle_fibre_orientation_z"),
+                        parameters.max_iso_stress_tendon_basematerial,
+                        parameters.tendon_basematerial_factor,
+                        parameters.tendon_basemat_c1,
+                        parameters.tendon_basemat_c2,
+                        parameters.tendon_basemat_c3,
+                        0.0,
+                        0.0,
+                        0.0);
+            break;
+          default:
+            AssertThrow(false, ExcMessage("One or more quadrature points contain an invalid tissue ID"));
+        }
       }
       catch (const std::out_of_range& e)
       {
@@ -2496,18 +2757,221 @@ namespace Flexodeal
   template <int dim>
   void Solid<dim>::make_grid()
   {
-    GridGenerator::hyper_rectangle(
-      triangulation,
-      (dim == 3 ? Point<dim>(0.0, 0.0, 0.0) : Point<dim>(0.0, 0.0)),
-      (dim == 3 ? Point<dim>(parameters.length, parameters.width, parameters.height) : Point<dim>(parameters.length, parameters.height)),
-      true);
-    GridTools::scale(parameters.scale, triangulation);
-    triangulation.refine_global(std::max(1U, parameters.global_refinement));
+    // This is the angle opposite to the length of the muscle (i.e. the line of action)
+    const double gamma_0 = M_PI - std::asin(std::sin(parameters.pennation_angle) * (parameters.muscle_length / parameters.aponeurosis_length));
+    // Compute initial fibre length
+    const double initial_fibre_length = parameters.aponeurosis_length * std::sin(parameters.pennation_angle + gamma_0) / std::sin(parameters.pennation_angle);
+    const double alpha_0_tilde = M_PI - gamma_0 - parameters.pennation_angle;
+    
+    // Define parallelepiped edges
+    const Tensor<1,dim> 
+    edge_along_fibre({initial_fibre_length * std::cos(parameters.pennation_angle),
+                      0.0,
+                      initial_fibre_length * std::sin(parameters.pennation_angle)});
+    const Tensor<1,dim>
+    edge_along_apo_length({parameters.aponeurosis_length * std::abs(std::cos(alpha_0_tilde)),
+                           0.0,
+                           -parameters.aponeurosis_length * std::sin(alpha_0_tilde)});
+    const Tensor<1,dim>
+    edge_along_width({0.0, parameters.muscle_width, 0.0}); 
+    const Tensor<1,dim>
+    edge_along_apo_height({0.0, 0.0, parameters.aponeurosis_height});
+
+    // Define subdivisions
+    const std::vector<unsigned int> 
+    subdivisions_muscle      = {(1U << parameters.global_refinement),
+                                (1U << (parameters.global_refinement + 1)),
+                                (1U << parameters.global_refinement)};
+    const std::vector<unsigned int>
+    subdivisions_aponeurosis = {1,
+                                (1U << (parameters.global_refinement + 1)),
+                                (1U << parameters.global_refinement)};
+    
+    // Construct muscle region
+    Triangulation<dim> tria_muscle;
+    {
+      const Point<dim> origin(0.0, 0.0, 0.0);
+      
+      std::array<Tensor<1,dim>, 3> edges;
+      edges[0] = edge_along_fibre;
+      edges[1] = edge_along_apo_length;
+      edges[2] = edge_along_width;
+      
+      GridGenerator::subdivided_parallelepiped<dim,dim>(tria_muscle,
+                                                        origin,
+                                                        edges,
+                                                        subdivisions_muscle,
+                                                        /*colorize=*/true);
+
+      // Label cells and boundaries. Note that colorize=true
+      // will label parallelepipeds as:
+      //
+      //                    "+z face"  1
+      //               _______________________
+      //              /                      /
+      //"-x face"  2 /                      /  3  "+x face"
+      //            /______________________/
+      //
+      //                 "-z face"  0
+      //
+      // with "-y face" as 4 and "+y face" as 5 (so not quite as in 
+      // GridGenerator::hyper_rectangle)
+      for (const auto &cell : tria_muscle.active_cell_iterators())
+      {
+        // Since this is muscle tissue, label all cells with material_id = 1
+        cell->set_material_id(1);
+        if (cell->at_boundary())
+          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
+            if (cell->face(face)->at_boundary())
+            {
+              // Prepare boundary IDs for merging
+              switch (cell->face(face)->boundary_id())
+              {
+                case 0:
+                  // This boundary will be lost when merging,
+                  // so set the boundary ID to something that
+                  // will not be used.
+                  cell->face(face)->set_boundary_id(99);
+                  break;
+                case 1:
+                  cell->face(face)->set_boundary_id(99);
+                  break;
+                case 2:
+                  cell->face(face)->set_boundary_id(6);
+                  break;
+                case 3:
+                  cell->face(face)->set_boundary_id(7);
+                  break;
+                case 4:
+                  cell->face(face)->set_boundary_id(2);
+                  break;
+                case 5:
+                  cell->face(face)->set_boundary_id(3);
+                  break;
+              }
+            }
+      }
+    }
+
+    // Construct bottom aponeurosis
+    Triangulation<dim> tria_apo_bottom;
+    {
+      const Point<dim> origin(0.0, 0.0, -parameters.aponeurosis_height);
+      
+      std::array<Tensor<1,dim>, 3> edges;
+      edges[0] = edge_along_apo_height;
+      edges[1] = edge_along_apo_length;
+      edges[2] = edge_along_width;
+      
+      GridGenerator::subdivided_parallelepiped<dim,dim>(tria_apo_bottom,
+                                                        origin,
+                                                        edges,
+                                                        subdivisions_aponeurosis,
+                                                        /*colorize=*/true);
+
+      // Label cells and boundaries
+      for (const auto &cell : tria_apo_bottom.active_cell_iterators())
+      {
+        // Since this is aponeurosis tissue, label all cells with material_id = 2
+        cell->set_material_id(2);
+        if (cell->at_boundary())
+          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
+            if (cell->face(face)->at_boundary())
+            {
+              // Prepare boundary IDs for merging
+              switch (cell->face(face)->boundary_id())
+              {
+                case 0:
+                  cell->face(face)->set_boundary_id(4);
+                  break;
+                case 1:
+                  // This boundary will be lost when merging.
+                  cell->face(face)->set_boundary_id(99);
+                  break;
+                case 2:
+                  cell->face(face)->set_boundary_id(0);
+                  break;
+                case 3:
+                  cell->face(face)->set_boundary_id(7);
+                  break;
+                case 4:
+                  cell->face(face)->set_boundary_id(2);
+                  break;
+                case 5:
+                  cell->face(face)->set_boundary_id(3);
+                  break;
+              }
+            }
+      }
+    }
+
+    // Construct top aponeurosis
+    Triangulation<dim> tria_apo_top;
+    {
+      const Point<dim> origin(initial_fibre_length * std::cos(parameters.pennation_angle),
+                              0.0,
+                              initial_fibre_length * std::sin(parameters.pennation_angle));
+      
+      std::array<Tensor<1,dim>, 3> edges;
+      edges[0] = edge_along_apo_height;
+      edges[1] = edge_along_apo_length;
+      edges[2] = edge_along_width;
+      
+      GridGenerator::subdivided_parallelepiped<dim,dim>(tria_apo_top,
+                                                        origin,
+                                                        edges,
+                                                        subdivisions_aponeurosis,
+                                                        /*colorize=*/true);
+
+      // Label cells and boundaries
+      for (const auto &cell : tria_apo_top.active_cell_iterators())
+      {
+        // Since this is aponeurosis tissue, label all cells with material_id = 2
+        cell->set_material_id(2);
+        if (cell->at_boundary())
+          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
+            if (cell->face(face)->at_boundary())
+            {
+              // Prepare boundary IDs for merging
+              switch (cell->face(face)->boundary_id())
+              {
+                case 0:
+                  // This boundary will be lost when merging.
+                  cell->face(face)->set_boundary_id(99);
+                  break;
+                case 1:
+                  cell->face(face)->set_boundary_id(5);
+                  break;
+                case 2:
+                  cell->face(face)->set_boundary_id(6);
+                  break;
+                case 3:
+                  cell->face(face)->set_boundary_id(1);
+                  break;
+                case 4:
+                  cell->face(face)->set_boundary_id(2);
+                  break;
+                case 5:
+                  cell->face(face)->set_boundary_id(3);
+                  break;
+              }
+            }
+      }
+    }
+
+    GridGenerator::merge_triangulations({&tria_muscle, &tria_apo_bottom, &tria_apo_top},
+                                        triangulation,
+                                        /*duplicateed_vertex_tolerance=*/1e-10,
+                                        /*copy_manifold_ids=*/false,
+                                        /*copy_boundary_ids=*/true);
 
     vol_reference = GridTools::volume(triangulation);
     std::cout << "Geometry:"
-              << "\n\t Reference volume: " << vol_reference << " m^3"
-              << "\n\t Mass:             " << vol_reference * parameters.muscle_density << " kg"
+              << "\n\t Reference volume:          " << vol_reference << " m^3"
+              << "\n\t Mass:                      " << vol_reference * parameters.muscle_density << " kg"
+              << "\n\t Fibre length:              " << initial_fibre_length << " m"
+              << "\n\t Fibre/Apo angle (alpha_0): " << (M_PI - gamma_0) * 180.0 / M_PI << " degrees"
+              << "\n\t Fibre/LOA angle (beta_0):  " << parameters.pennation_angle * 180.0 / M_PI << " degrees"
               << "\n" << std::endl;
 
     // then, we output the grid used for future reference.
@@ -2557,7 +3021,7 @@ namespace Flexodeal
       std::ofstream output(filename.str().c_str());
 
       // The first thing is to output the column names. 
-      output << "qp_x" << "," << "qp_y" << "," << "qp_z" <<"\n";
+      output << "qp_x" << "," << "qp_y" << "," << "qp_z" << "," << "tissue_id" <<"\n";
 
       // fe has been setup at initialization. Otherwise, we could
       // create a dummy fe here
@@ -2570,6 +3034,9 @@ namespace Flexodeal
         // Get cell QPs
         const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
 
+        // Get tissue_id
+        const unsigned int tissue_id = cell->material_id();
+
         // Write them to file
         for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
         {
@@ -2577,7 +3044,7 @@ namespace Flexodeal
           float qp_y = qp[q_point][1];
           float qp_z = qp[q_point][2];
           output << std::scientific << std::setprecision(8) 
-                 << qp_x << "," << qp_y << "," << qp_z <<"\n";
+                 << qp_x << "," << qp_y << "," << qp_z << "," << tissue_id << "\n";
         }
       }
     }
@@ -2607,6 +3074,12 @@ namespace Flexodeal
 
     // Sort the array
     std::sort(list_of_boundary_ids.begin(), list_of_boundary_ids.end());
+
+    // Print the array
+    std::cout << "Boundary IDs found:\t";
+    for (auto &elem : list_of_boundary_ids)
+      std::cout << elem << "\t";
+    std::cout << "\n" << std::endl;
   }
 
 
@@ -3830,7 +4303,7 @@ namespace Flexodeal
             dof_handler,
             boundary_id,
             IncrementalDisplacement<dim>(
-              u_dir(time.current())*parameters.length,u_dir(time.previous())*parameters.length),
+              u_dir(time.current())*parameters.muscle_length,u_dir(time.previous())*parameters.muscle_length),
             constraints,
             (fe.component_mask(x_displacement) | fe.component_mask(y_displacement) | fe.component_mask(z_displacement)));
         }
@@ -4570,7 +5043,9 @@ namespace Flexodeal
   void Solid<dim>::output_energies() const
   {
     double kinetic_energy = 0.0, energy_int = 0.0, energy_vol = 0.0, energy_iso = 0.0,
-    energy_muscle_base = 0.0, energy_muscle_passive = 0.0, energy_muscle_active = 0.0;
+    energy_muscle_base = 0.0, energy_muscle_passive = 0.0, energy_muscle_active = 0.0,
+    energy_apo_base = 0.0, energy_apo_fibre = 0.0, 
+    energy_tendon_base = 0.0, energy_tendon_fibre = 0.0;
 
     FEValues<dim> fe_values(fe, qf_cell,
                             update_values | update_gradients |
@@ -4586,6 +5061,7 @@ namespace Flexodeal
 
       for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
       {
+        const unsigned int tissue_id                    = lqph[q_point]->get_tissue_id();
         const Tensor<2, dim> F_inv                      = lqph[q_point]->get_F_inv();
         const SymmetricTensor<2, dim> tau               = lqph[q_point]->get_tau();
         const SymmetricTensor<2, dim> tau_vol           = lqph[q_point]->get_tau_vol();
@@ -4605,9 +5081,13 @@ namespace Flexodeal
         energy_int += symm_grad_displacement * tau * JxW;
         energy_vol += symm_grad_displacement * tau_vol * JxW;
         energy_iso += symm_grad_displacement * tau_iso * JxW;
-        energy_muscle_base += symm_grad_displacement * tau_muscle_base * JxW;
-        energy_muscle_passive += symm_grad_displacement * tau_muscle_passive * JxW;
-        energy_muscle_active += symm_grad_displacement * tau_muscle_active * JxW;
+        energy_muscle_base += symm_grad_displacement * tau_muscle_base * JxW * (tissue_id == 1);
+        energy_muscle_passive += symm_grad_displacement * tau_muscle_passive * JxW * (tissue_id == 1);
+        energy_muscle_active += symm_grad_displacement * tau_muscle_active * JxW * (tissue_id == 1);
+        energy_apo_base += symm_grad_displacement * tau_muscle_base * JxW * (tissue_id == 2);
+        energy_apo_fibre += symm_grad_displacement * tau_muscle_passive * JxW * (tissue_id == 2);
+        energy_tendon_base += symm_grad_displacement * tau_muscle_base * JxW * (tissue_id == 3);
+        energy_tendon_fibre += symm_grad_displacement * tau_muscle_passive * JxW * (tissue_id == 3);
       }
     }
 
@@ -4616,13 +5096,17 @@ namespace Flexodeal
     // Display energies
     std::cout << "\n"
               << "Energies of the system  [J/m^3]:" << "\n"
-              << "Kinetic energy:" << "\t\t" << kinetic_energy / current_volume << "\n"
-              << "Internal energy:" << "\t" << energy_int / current_volume << "\n"
-              << "Vol energy:" << "\t\t" << energy_vol / current_volume << "\n"
-              << "Iso energy:" << "\t\t" << energy_iso / current_volume << "\n"
-              << "Musclebase energy:" << "\t" << energy_muscle_active / current_volume << "\n"
-              << "Musclepassive energy:" << "\t" << energy_muscle_passive / current_volume << "\n"
-              << "Muscleactive energy:" << "\t" << energy_muscle_base / current_volume << "\n"
+              << "Kinetic energy:       " << kinetic_energy / current_volume << "\n"
+              << "Internal energy:      " << energy_int / current_volume << "\n"
+              << "Vol energy:           " << energy_vol / current_volume << "\n"
+              << "Iso energy:           " << energy_iso / current_volume << "\n"
+              << "Musclebase energy:    " << energy_muscle_base / current_volume << "\n"
+              << "Musclepassive energy: " << energy_muscle_passive / current_volume << "\n"
+              << "Muscleactive energy:  " << energy_muscle_active / current_volume << "\n"
+              << "Apobase energy:       " << energy_apo_base / current_volume << "\n"
+              << "Apofibre energy       " << energy_apo_fibre / current_volume << "\n"
+              << "Tendonbase energy:    " << energy_tendon_base / current_volume << "\n"
+              << "Tendonfibre energy    " << energy_tendon_fibre / current_volume << "\n"
               << std::endl;
 
     // Output time series as a CSV file.
@@ -4641,6 +5125,10 @@ namespace Flexodeal
              << "," << "Muscle active [J/m^3]"
              << "," << "Muscle passive [J/m^3]"
              << "," << "Muscle base [J/m^3]"
+             << "," << "Aponeurosis fibre [J/m^3]"
+             << "," << "Aponeurosis base [J/m^3]"
+             << "," << "Tendon fibre [J/m^3]"
+             << "," << "Tendon base [J/m^3]"
              << "," << "Volume [m^3]" << "\n";
     }
       
@@ -4656,6 +5144,10 @@ namespace Flexodeal
            << "," << energy_muscle_active / current_volume
            << "," << energy_muscle_passive / current_volume
            << "," << energy_muscle_base / current_volume
+           << "," << energy_apo_fibre / current_volume
+           << "," << energy_apo_base / current_volume
+           << "," << energy_tendon_fibre / current_volume
+           << "," << energy_tendon_base / current_volume
            << "," << current_volume << "\n";
   }
 
@@ -4667,7 +5159,9 @@ namespace Flexodeal
   void Solid<dim>::output_forces() const
   {
     std::map<unsigned int, Tensor<1,dim>> force_total, force_vol, force_iso,
-    force_muscle_base, force_muscle_passive, force_muscle_active;
+    force_muscle_base, force_muscle_passive, force_muscle_active,
+    force_apo_base, force_apo_fibre,
+    force_tendon_base, force_tendon_fibre;
         
     FEValues<dim> fe_values(fe, qf_cell,
                                 update_values | update_gradients |
@@ -4717,6 +5211,7 @@ namespace Flexodeal
             const Tensor<1, dim> &N = fe_face_values.normal_vector(f_q_point);
             const double JxW        = fe_face_values.JxW(f_q_point);
 
+            const unsigned int tissue_id            = lqph[f_q_point_closest]->get_tissue_id();
             const Tensor<2, dim> F_inv              = lqph[f_q_point_closest]->get_F_inv();
             const Tensor<2, dim> tau                = lqph[f_q_point_closest]->get_tau();
             const Tensor<2, dim> tau_vol            = lqph[f_q_point_closest]->get_tau_vol();
@@ -4728,9 +5223,13 @@ namespace Flexodeal
             force_total[bdy_id]         += 0.5 * (tau + transpose(tau)) * transpose(F_inv) * N * JxW;
             force_vol[bdy_id]           += 0.5 * (tau_vol + transpose(tau_vol)) * transpose(F_inv) * N * JxW;
             force_iso[bdy_id]           += 0.5 * (tau_iso + transpose(tau_iso)) * transpose(F_inv) * N * JxW;
-            force_muscle_base[bdy_id]   += 0.5 * (tau_muscle_base + transpose(tau_muscle_base)) * transpose(F_inv) * N * JxW;
-            force_muscle_passive[bdy_id]+= 0.5 * (tau_muscle_passive + transpose(tau_muscle_passive)) * transpose(F_inv) * N * JxW;
-            force_muscle_active[bdy_id] += 0.5 * (tau_muscle_active + transpose(tau_muscle_active)) * transpose(F_inv) * N * JxW;
+            force_muscle_base[bdy_id]   += 0.5 * (tau_muscle_base + transpose(tau_muscle_base)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 1);
+            force_muscle_passive[bdy_id]+= 0.5 * (tau_muscle_passive + transpose(tau_muscle_passive)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 1);
+            force_muscle_active[bdy_id] += 0.5 * (tau_muscle_active + transpose(tau_muscle_active)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 1);
+            force_apo_base[bdy_id]      += 0.5 * (tau_muscle_base + transpose(tau_muscle_base)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 2);
+            force_apo_fibre[bdy_id]     += 0.5 * (tau_muscle_passive + transpose(tau_muscle_passive)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 2);
+            force_tendon_base[bdy_id]   += 0.5 * (tau_muscle_base + transpose(tau_muscle_base)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 3);
+            force_tendon_fibre[bdy_id]  += 0.5 * (tau_muscle_passive + transpose(tau_muscle_passive)) * transpose(F_inv) * N * JxW * static_cast<int>(tissue_id == 3);
           }
         }
       }
@@ -4768,22 +5267,46 @@ namespace Flexodeal
                 << std::setw(7) << std::scientific << force_iso[x].norm() << " ";
 
     std::cout << "\n";
-    std::cout << "Active           ";
+    std::cout << "Muscle Active    ";
     for (const auto &x: list_of_boundary_ids)
       std::cout << "| " << std::fixed << std::setprecision(3) 
                 << std::setw(7) << std::scientific << force_muscle_active[x].norm() << " ";
 
     std::cout << "\n";
-    std::cout << "Passive          ";
+    std::cout << "Muscle Passive   ";
     for (const auto &x: list_of_boundary_ids)
       std::cout << "| " << std::fixed << std::setprecision(3) 
                 << std::setw(7) << std::scientific << force_muscle_passive[x].norm() << " ";
     
     std::cout << "\n";
-    std::cout << "Base Material    ";
+    std::cout << "Muscle Base Mat  ";
     for (const auto &x: list_of_boundary_ids)
       std::cout << "| " << std::fixed << std::setprecision(3) 
                 << std::setw(7) << std::scientific << force_muscle_base[x].norm() << " ";
+
+    std::cout << "\n";
+    std::cout << "Apo Fibre        ";
+    for (const auto &x: list_of_boundary_ids)
+      std::cout << "| " << std::fixed << std::setprecision(3) 
+                << std::setw(7) << std::scientific << force_apo_fibre[x].norm() << " ";
+    
+    std::cout << "\n";
+    std::cout << "Apo Base Mat     ";
+    for (const auto &x: list_of_boundary_ids)
+      std::cout << "| " << std::fixed << std::setprecision(3) 
+                << std::setw(7) << std::scientific << force_apo_base[x].norm() << " ";
+
+    std::cout << "\n";
+    std::cout << "Tendon Fibre     ";
+    for (const auto &x: list_of_boundary_ids)
+      std::cout << "| " << std::fixed << std::setprecision(3) 
+                << std::setw(7) << std::scientific << force_tendon_fibre[x].norm() << " ";
+    
+    std::cout << "\n";
+    std::cout << "Tendon Base Mat  ";
+    for (const auto &x: list_of_boundary_ids)
+      std::cout << "| " << std::fixed << std::setprecision(3) 
+                << std::setw(7) << std::scientific << force_tendon_base[x].norm() << " ";
     
     std::cout << std::endl;
 
@@ -4803,7 +5326,12 @@ namespace Flexodeal
                << "," << "Isochoric x [N]" << "," << "Isochoric y [N]" << "," << "Isochoric z [N]"
                << "," << "Muscle active x [N]" << "," << "Muscle active y [N]" << "," << "Muscle active z [N]"
                << "," << "Muscle passive x [N]" << "," << "Muscle passive y [N]" << "," << "Muscle passive z [N]"
-               << "," << "Muscle base x [N]" << "," << "Muscle base y [N]" << "," << "Muscle base z [N]" << "\n";
+               << "," << "Muscle base x [N]" << "," << "Muscle base y [N]" << "," << "Muscle base z [N]" 
+               << "," << "Aponeurosis fibre x [N]" << "," << "Aponeurosis fibre y [N]" << "," << "Aponeurosis fibre z [N]"
+               << "," << "Aponeurosis base x [N]" << "," << "Aponeurosis base y [N]" << "," << "Aponeurosis base z [N]"
+               << "," << "Tendon fibre x [N]" << "," << "Tendon fibre y [N]" << "," << "Tendon fibre z [N]"
+               << "," << "Tendon base x [N]" << "," << "Tendon base y [N]" << "," << "Tendon base z [N]"
+               << "\n";
 
       for (const auto &x: list_of_boundary_ids)
         output << x << "," << std::fixed << std::setprecision(4) << std::scientific
@@ -4812,7 +5340,11 @@ namespace Flexodeal
               << force_iso[x][0] << "," << force_iso[x][1] << "," << force_iso[x][2] << ","
               << force_muscle_active[x][0] << "," << force_muscle_active[x][1] << "," << force_muscle_active[x][2] << ","
               << force_muscle_passive[x][0] << "," << force_muscle_passive[x][1] << "," << force_muscle_passive[x][2] << ","
-              << force_muscle_base[x][0] << "," << force_muscle_base[x][1] << "," << force_muscle_base[x][2] << "\n";
+              << force_muscle_base[x][0] << "," << force_muscle_base[x][1] << "," << force_muscle_base[x][2] << ","
+              << force_apo_fibre[x][0] << "," << force_apo_fibre[x][1] << "," << force_apo_fibre[x][2] << ","
+              << force_apo_base[x][0] << "," << force_apo_base[x][1] << "," << force_apo_base[x][2] << ","
+              << force_tendon_fibre[x][0] << "," << force_tendon_fibre[x][1] << "," << force_tendon_fibre[x][2] << ","
+              << force_tendon_base[x][0] << "," << force_tendon_base[x][1] << "," << force_tendon_base[x][2] << "\n";
     }
 
     // Finally, output a time series. For this, we are only interested 
@@ -4836,6 +5368,10 @@ namespace Flexodeal
               << "," << "Muscle active [N]"
               << "," << "Muscle passive [N]"
               << "," << "Muscle base [N]"
+              << "," << "Apo fibre [N]"
+              << "," << "Apo base [N]"
+              << "," << "Tendon fibre [N]"
+              << "," << "Tendon base [N]"
               << "," << "Volume [m^3]" << "\n";
       }
       else
@@ -4850,6 +5386,10 @@ namespace Flexodeal
              << "," << force_muscle_active[parameters.pulling_face_id][0]
              << "," << force_muscle_passive[parameters.pulling_face_id][0]
              << "," << force_muscle_base[parameters.pulling_face_id][0]
+             << "," << force_apo_fibre[parameters.pulling_face_id][0]
+             << "," << force_apo_base[parameters.pulling_face_id][0]
+             << "," << force_tendon_fibre[parameters.pulling_face_id][0]
+             << "," << force_tendon_base[parameters.pulling_face_id][0]
              << "," << current_volume << "\n";
     }
   }
@@ -4871,8 +5411,8 @@ namespace Flexodeal
       // We restrict the computation of these quantities to a slab in the
       // middle of the domain to avoid averaging with outliers located
       // at the ends of the block.
-      if (cell->center()[0] >= 3.0*parameters.length/8.0 &&
-          cell->center()[0] <= 5.0*parameters.length/8.0)
+      if (cell->center()[0] >= 3.0*parameters.muscle_length/8.0 &&
+          cell->center()[0] <= 5.0*parameters.muscle_length/8.0)
       {
         fe_values.reinit(cell);
 
@@ -4882,14 +5422,19 @@ namespace Flexodeal
 
         for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
         {
-          const double          stretch      = lqph[q_point]->get_stretch();
-          const Tensor<1, dim>  orientation  = lqph[q_point]->get_orientation();    
-          const double          det_F        = lqph[q_point]->get_det_F();
-          const double          JxW          = fe_values.JxW(q_point);
+          const unsigned int tissue_id = lqph[q_point]->get_tissue_id();
+          // This computation is only valid for muscle tissue
+          if (tissue_id == 1)
+          {
+            const double          stretch      = lqph[q_point]->get_stretch();
+            const Tensor<1, dim>  orientation  = lqph[q_point]->get_orientation();    
+            const double          det_F        = lqph[q_point]->get_det_F();
+            const double          JxW          = fe_values.JxW(q_point);
 
-          mean_stretch += stretch * det_F * JxW;
-          mean_pennation += std::acos(orientation[0] / stretch) * det_F * JxW;
-          volume_slab += det_F * JxW;
+            mean_stretch += stretch * det_F * JxW;
+            mean_pennation += std::acos(orientation[0] / stretch) * det_F * JxW;
+            volume_slab += det_F * JxW;
+          }
         }
       }
     }
@@ -5005,7 +5550,7 @@ namespace Flexodeal
   void Solid<dim>::output_gearing_info() const
   {
     // This function only makes sense for dynamic computations (no velocity is computed 
-    // in quasi-static simulations). If that is not the case, we just skip this function.
+    // in quasi-static simulations).
     if (parameters.type_of_simulation != "dynamic")
       return void();
     
@@ -5021,8 +5566,8 @@ namespace Flexodeal
       // We restrict the computation of these quantities to a slab in the
       // middle of the domain to avoid averaging with outliers located
       // at the ends of the block.
-      if (cell->center()[0] >= 3.0*parameters.length/8.0 &&
-          cell->center()[0] <= 5.0*parameters.length/8.0)
+      if (cell->center()[0] >= 3.0*parameters.muscle_length/8.0 &&
+          cell->center()[0] <= 5.0*parameters.muscle_length/8.0)
       {
         fe_values.reinit(cell);
 
@@ -5032,17 +5577,23 @@ namespace Flexodeal
 
         for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
         {
-          // As in output_energies(), get_velocity_previous returns the current velocity.
-          const Tensor<1, dim> muscle_velocity = lqph[q_point]->get_velocity_previous();
-          // We now retrieve information related to the fibre velocity.
-          const double strain_rate = lqph[q_point]->get_strain_rate();
-          // The rest of the quantities are related to the integrals themselves, as usual.
-          const double det_F = lqph[q_point]->get_det_F();
-          const double JxW = fe_values.JxW(q_point);
+          // Similar to the computation of the mean stretch and pennation
+          // variables, this loop should only consider muscle tissue
+          const unsigned int tissue_id = lqph[q_point]->get_tissue_id();
+          if (tissue_id == 1)
+          {
+            // As in output_energies(), get_velocity_previous returns the current velocity.
+            const Tensor<1, dim> muscle_velocity = lqph[q_point]->get_velocity_previous();
+            // We now retrieve information related to the fibre velocity.
+            const double strain_rate = lqph[q_point]->get_strain_rate();
+            // The rest of the quantities are related to the integrals themselves, as usual.
+            const double det_F = lqph[q_point]->get_det_F();
+            const double JxW = fe_values.JxW(q_point);
 
-          mean_muscle_velocity += muscle_velocity * det_F * JxW;
-          mean_strain_rate  += strain_rate * det_F * JxW;
-          volume_slab += det_F * JxW;
+            mean_muscle_velocity += muscle_velocity * det_F * JxW;
+            mean_strain_rate  += strain_rate * det_F * JxW;
+            volume_slab += det_F * JxW;
+          }
         }
       }
     }
@@ -5050,7 +5601,20 @@ namespace Flexodeal
     mean_muscle_velocity = mean_muscle_velocity / volume_slab;
     mean_strain_rate = mean_strain_rate / volume_slab;
 
-    const double initial_fibre_length = parameters.height / parameters.muscle_fibre_orientation_z;
+    double initial_fibre_length = 0.0;
+    {
+      // This computation is likely *not* valid for geometries that are not the 
+      // one in Solid<dim>::make_grid, so this quantity must be updated 
+      // appropriately whenever a different mesh is used.
+
+      // This is the angle opposite to the length of the muscle (i.e. the line of action)
+      const double gamma_0 = M_PI - std::asin(std::sin(parameters.pennation_angle) 
+                           * (parameters.muscle_length / parameters.aponeurosis_length));
+      // Compute initial fibre length
+      initial_fibre_length = parameters.aponeurosis_length 
+                           * std::sin(parameters.pennation_angle + gamma_0) 
+                           / std::sin(parameters.pennation_angle);
+    }
     const double strain_rate_naught = parameters.max_strain_rate;
 
     // Output time series:
@@ -5129,7 +5693,7 @@ namespace Flexodeal
     output << time.current() << std::fixed 
            << std::setprecision(4) << std::scientific
            << "," << activation_function(time.current()) * 100
-           << "," << parameters.length * (u_dir(time.current()) + 1.0) << "\n";
+           << "," << parameters.muscle_length * (u_dir(time.current()) + 1.0) << "\n";
   }
 
   // @sect4{Output displacements at select locations}
@@ -5226,11 +5790,12 @@ namespace Flexodeal
         float orientation_x = orientation[0];
         float orientation_y = orientation[1];
         float orientation_z = orientation[2];
+        unsigned int tissue_id = lqph[q_point]->get_tissue_id();
         
-        float output_matrix[20] = {qp_x, qp_y, qp_z, JxW, det_F,
+        float output_matrix[21] = {qp_x, qp_y, qp_z, JxW, det_F,
                                    u1, u2, u3, v1, v2, v3, p, D,
                                    stretch, stretch_bar, strain_rate, strain_rate_bar,
-                                   orientation_x, orientation_y, orientation_z};
+                                   orientation_x, orientation_y, orientation_z, static_cast<float>(tissue_id)};
 
         output.write((char*)&output_matrix, sizeof(output_matrix)); 
       }
@@ -5350,15 +5915,17 @@ namespace Flexodeal
         float tau_muscle_base_3_1 = tau_muscle_base[2][0];
         float tau_muscle_base_3_2 = tau_muscle_base[2][1];
         float tau_muscle_base_3_3 = tau_muscle_base[2][2];
+        // Tissue ID
+        unsigned int tissue_id = lqph[q_point]->get_tissue_id();
         
-        float output_matrix[68] ={qp_x, qp_y, qp_z, JxW, det_F,
+        float output_matrix[69] ={qp_x, qp_y, qp_z, JxW, det_F,
                                   F_1_1, F_1_2, F_1_3, F_2_1, F_2_2, F_2_3, F_3_1, F_3_2, F_3_3,
                                   tau_1_1, tau_1_2, tau_1_3, tau_2_1, tau_2_2, tau_2_3, tau_3_1, tau_3_2, tau_3_3,
                                   tau_vol_1_1, tau_vol_1_2, tau_vol_1_3, tau_vol_2_1, tau_vol_2_2, tau_vol_2_3, tau_vol_3_1, tau_vol_3_2, tau_vol_3_3,
                                   tau_iso_1_1, tau_iso_1_2, tau_iso_1_3, tau_iso_2_1, tau_iso_2_2, tau_iso_2_3, tau_iso_3_1, tau_iso_3_2, tau_iso_3_3,
                                   tau_muscle_active_1_1, tau_muscle_active_1_2, tau_muscle_active_1_3, tau_muscle_active_2_1, tau_muscle_active_2_2, tau_muscle_active_2_3, tau_muscle_active_3_1, tau_muscle_active_3_2, tau_muscle_active_3_3,
                                   tau_muscle_passive_1_1, tau_muscle_passive_1_2, tau_muscle_passive_1_3, tau_muscle_passive_2_1, tau_muscle_passive_2_2, tau_muscle_passive_2_3, tau_muscle_passive_3_1, tau_muscle_passive_3_2, tau_muscle_passive_3_3,
-                                  tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3};
+                                  tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3, static_cast<float>(tissue_id)};
 
         output.write((char*)&output_matrix, sizeof(output_matrix));
       }

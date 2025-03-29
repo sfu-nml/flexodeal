@@ -20,14 +20,22 @@ subsection Geometry
   # Global refinement level
   set Global refinement   = 2
 
-   # Length of the muscle block [m]
-  set Length = 0.03
+  # Muscle length [m]
+  set Muscle length = 0.27
 
-  # Width of the muscle block [m]
-  set Width = 0.01
+  # Aponeurosis length [m]
+  set Aponeurosis length = 0.208
 
-  # Height of the muscle block [m]
-  set Height = 0.01
+  # Aponeurosis height [m]
+  set Aponeurosis height = 0.003
+
+  # Muscle width [m]
+  set Muscle width = 0.055
+
+  # Pennation angle muscle fibres [deg]
+  # This is the angle between the fibres and the line
+  # of action (LOA), which is taken here as the x-axis.
+  set Pennation angle = 15.3
 
   # Global grid scaling factor (note that this factor
   # scales the grid and nothing else)
@@ -67,13 +75,16 @@ end
 
 
 subsection Materials
-  # QP information
-  set QP list filename = sample_quadrature_point_data.csv
+  # Quadrature point (QP) information.
+  # Make sure to use the right QP file! Each mesh
+  # yields a different list of quadrature points,
+  # so this file must be updated accordingly.
+  set QP list filename = qp_files/quadrature_point_data_2.csv
 
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
 
-  # -------------- Fibre properties -----------------
+  # ----------------- Muscle fibre properties -------------------
 
   # Maximum isometric stress [Pa]
   set Sigma naught muscle = 2.0e5
@@ -84,12 +95,10 @@ subsection Materials
   # Maximum strain rate [1/s]
   set Max strain rate = 5.0
 
-  # Initial fibre orientation (must be a unit vector)
-  set Muscle x component = 0.86602540
-  set Muscle y component = 0.0
-  set Muscle z component = 0.50000000
+  # Initial fibre orientation (must be a unit vector):
+  # input via quadrature point table (CSV file)
   
-  # ----------- Base material properties ------------
+  # ------------ Muscle base material properties ----------------
 
   # Maximum isometric stress base material [Pa]
   # (which is usually equal to that of the muscle fibres)
@@ -104,7 +113,51 @@ subsection Materials
 	set Muscle base material constant 2 = 0.3662334826469149
 	set Muscle base material constant 3 = 0.0
 
-  # ------------------- Fat properties --------------
+  # -------------- Aponeurosis fibre properties -----------------
+
+  # Aponeurosis fibre normalizing stress [Pa]
+  set Sigma naught aponeurosis = 2.0e5
+
+  # Aponeurosis bulk modulus [Pa]
+  set Bulk modulus aponeurosis = 1.0e7
+
+  # ----------- Aponeurosis base material properties ------------
+
+  # Aponeurosis base material normalizing stress [Pa]
+  set Sigma naught aponeurosis base material = 2.0e5
+
+  # Aponeurosis base material "fudge" factor [nondimensional]
+  # Ideally this should be 1.
+  set Aponeurosis base material factor = 1.0
+
+  # Constants in Yeoh strain-energy function
+  set Aponeurosis base material constant 1 = 4.6896264975
+  set Aponeurosis base material constant 2 = -3.4551410975
+  set Aponeurosis base material constant 3 = 484.92055395
+
+  # ---------------- Tendon fibre properties --------------------
+
+  # Tendon fibre normalizing stress [Pa]
+  set Sigma naught tendon  = 2.0e5
+
+   # Tendon bulk modulus [Pa]
+  set Bulk modulus tendon = 1.0e8
+
+  # ------------- Tendon base material properties ---------------
+
+  # Tendon base material normalizing stress [Pa]
+  set Sigma naught tendon base material = 2.0e5
+
+  # Tendon base material "fudge" factor [nondimensional]
+  # Ideally this should be 1.
+  set Tendon base material factor = 1.0
+
+  # Constants in Yeoh strain-energy function
+  set Tendon base material constant 1 = 4.6896264975
+  set Tendon base material constant 2 = -3.4551410975
+  set Tendon base material constant 3 = 484.92055395
+
+  # ---------------------- Fat properties ------------------------
 
   # Bulk modulus fat [Pa]
   set Bulk modulus fat = 1.0e+07
@@ -144,10 +197,10 @@ subsection Time
   # End time [s]
   # To obtain data for the very last time step, add 1e-08 to
   # the desired end time
-  set End time       = 0.50000001
+  set End time       = 1.00000001
 
   # Time step size [s]
-  set Time step size = 0.025
+  set Time step size = 0.01
 end
 
 
@@ -176,14 +229,14 @@ subsection Output binary files
     # needed.
 
     # File 1: cell_data_main-3d-XYZ.data (XYZ: time step)
-    # Number of columns: 20
+    # Number of columns: 21
     # Columns: qp_x, qp_y, qp_z, JxW, det_F, u1, u2, u3, v1, v2, v3, p, D,
     #          stretch, stretch_bar, strain_rate, strain_rate_bar,
-    #          orientation_x, orientation_y, orientation_z
+    #          orientation_x, orientation_y, orientation_z, tissue_id
     set Output binary files main variables = true
 
     # File 2: cell_data_tensors-3d-XYZ.data (XYZ: time step)
-    # Number of columns: 68
+    # Number of columns: 69
     # Columns: qp_x, qp_y, qp_z, JxW, det_F,
     #          F_1_1, F_1_2, F_1_3, F_2_1, F_2_2, F_2_3, F_3_1, F_3_2, F_3_3,
     #          tau_1_1, tau_1_2, tau_1_3, tau_2_1, tau_2_2, tau_2_3, tau_3_1, tau_3_2, tau_3_3,
@@ -191,6 +244,7 @@ subsection Output binary files
     #          tau_iso_1_1, tau_iso_1_2, tau_iso_1_3, tau_iso_2_1, tau_iso_2_2, tau_iso_2_3, tau_iso_3_1, tau_iso_3_2, tau_iso_3_3,
     #          tau_muscle_active_1_1, tau_muscle_active_1_2, tau_muscle_active_1_3, tau_muscle_active_2_1, tau_muscle_active_2_2, tau_muscle_active_2_3, tau_muscle_active_3_1, tau_muscle_active_3_2, tau_muscle_active_3_3,
     #          tau_muscle_passive_1_1, tau_muscle_passive_1_2, tau_muscle_passive_1_3, tau_muscle_passive_2_1, tau_muscle_passive_2_2, tau_muscle_passive_2_3, tau_muscle_passive_3_1, tau_muscle_passive_3_2, tau_muscle_passive_3_3,
-    #          tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3
-    set Output binary files tensors = true
+    #          tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3,
+    #          tissue_id
+    set Output binary files tensors = false
 end
