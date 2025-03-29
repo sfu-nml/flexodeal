@@ -2,9 +2,7 @@
 
 Flexodeal is a computational library designed to perform three-dimensional dynamic or quasi-static deformations of skeletal muscle tissue using a Hill-type muscle model and the finite element library [deal.II](https://www.dealii.org).
 
-> :warning: For now, muscle geometries can only contain muscle tissue with intramusucular fat, i.e. no tendon or aponeurosis. Support for these quantities will come in a future version of Flexodeal.
-
-The underlying material properties, numerical algorithms, are described in the following paper:
+The underlying material properties and numerical algorithms, are described in the following paper:
 
 * Almonacid, J. A., Domínguez-Rivera, S. A., Konno, R. N., Nigam, N., Ross, S. A., Tam, C., & Wakeling, J. M. (2024). A three-dimensional model of skeletal muscle tissues. SIAM Journal on Applied Mathematics, S538-S566. [https://doi.org/10.1137/22M1506985](https://doi.org/10.1137/22M1506985)
 
@@ -28,9 +26,9 @@ This coding framework has been used in the following studies:
 
 # Installation
 
-1. Download and compile deal.II (available for Linux and MacOS). Flexodeal started its development using v9.3.0 of deal.II, but it has been to show to work on the latest version as well (v9.6.0).
+1. Download and compile deal.II (available for Linux and MacOS). The latest version of Flexodeal works with deal.II v9.5.1, though users with deal.II v9.6 have also been able to use Flexodeal without issues (yet).
 
-2. Download the [latest release](https://github.com/javieralmonacid/flexodeal/releases) of Flexodeal using the .zip file or simply clone this repository to get bleeding edge updates by simply invoking ```git pull```.
+2. Download the [latest release](https://github.com/javieralmonacid/flexodeal/releases) of Flexodeal using the .zip file or simply clone this repository (`git clone`) to get bleeding edge updates by simply invoking ```git pull```.
 
 3. Go to the directory where you extracted or cloned Flexodeal and compile using CMake: ```cmake . -DCMAKE_BUILD_TYPE=Release -DDEAL_II_DIR=<path/to/deal.II>```. This will set the appropriate dependencies to then ```make``` the code.
 
@@ -47,7 +45,7 @@ You may generate the mesh in a different software and export it as a .msh file o
 
 ## 2. Setting up the quadrature point table (requires a mesh)
 
-The main difference with [Flexodeal Lite](https://github.com/sfu-nml/flexodeal-lite) is that here it is mandatory to use a quadrature point (QP) file. By default, in ```parameters.prm```, this file is called ```quadrature_point_data.csv``` (see ```set QP list filename``` in the ```Materials``` subsection).
+The main difference with [Flexodeal Lite](https://github.com/sfu-nml/flexodeal-lite) is that here it is mandatory to use a quadrature point (QP) file. By default, in ```parameters.prm```, this file is called ```quadrature_point_data_2.csv``` (see ```set QP list filename``` in the ```Materials``` subsection) located in the `qp_files` folder.
 
 In the context of finite element methods, many of the integrals involved in computing element stiffness matrices, mass matrices, and load vectors are not straightforward to evaluate analytically. Since exact integration may not be possible or practical for most element shapes, numerical integration is used to approximate these integrals.
 
@@ -62,7 +60,7 @@ The number of quadrature points is determined by the *order* of the quadrature r
 | 2 | quasi-static | 3 | 27  |
 | 2 | dynamic      | 4 | 64  |
 | 3 | quasi-static | 4 | 64  |
-| 3 | quasi-static | 5 | 125 |
+| 3 | dynamic      | 5 | 125 |
 
 
 The QP file serves two purposes: it lists the quadrature points and attaches QP-dependent material properties. To first generate the file, ```make``` the code and then use one of the following options:
@@ -74,27 +72,42 @@ The QP file serves two purposes: it lists the quadrature points and attaches QP-
 ```
 ./flexodeal -QP_LIST_ONLY
 ```
-This should generate the file ```quadrature_point_data.csv``` (or whatever name you chose in ```parameters.prm```) in the current directory. The file will only contain three columns: ```qp_x```, ```qp_y```, and ```qp_z```, denoting each one of the components of the QP.
+This should generate the file ```qp_files/quadrature_point_data_2.csv``` (or whatever name you chose in ```parameters.prm```) in the `qp_files` directory. The file will only contain four columns: ```qp_x```, ```qp_y```, ```qp_z```, and `tissue_id` denoting each one of the components of the QP and its material characteristics.
+
+Tissue ID is the way we differentiate muscle tissue from others, such as aponeurosis and tendon. As of this version of Flexodeal, the following IDs can be identified in tissue:
+
+| Tissue                             | ID  | 
+|:----------------------------------:|:---:|
+| Muscular                           |  1  |
+| Aponeurosis (internal or external) |  2  |
+| Tendon                             |  3  |
+
+Tissue IDs are assigned to each QP depending on the material ID (also called "physical ID") of each in which the QP is located. These material IDs should be set **at the time the mesh is constructed**.
 
 The next step is to attach physiological properties to each one of these points. To do so, edit the CSV file and insert a new column with the name of the property and the value for each point. At the moment, the following properties are supported (written as ```column header```: description [units]):
 * ```max_iso_stress_muscle```: maximum isometric stress of muscle [Pa].
 * ```muscle_fibre_orientation_x```: Initial fibre orientation vector (normalized), x component.
 * ```muscle_fibre_orientation_y```: Initial fibre orientation vector (normalized), y component.
 * ```muscle_fibre_orientation_z```: Initial fibre orientation vector (normalized), z component.
-* ```tissue_id```: Tissue ID (```unsigned int```) to differentiate different parts of the muscle.
 * ```fat_fraction```: Fraction of intramuscular fat present in muscle. It is a number between 0 and 1.
 
 > :warning: *The order of these columns does not matter, however, it is important to use the correct header name, otherwise, the code will throw an error.*
 
-Review the file ```quadrature_point_data.csv``` to see how the QP file should look like.
+Review any of the QP files in the  ```qp_files``` folder to see how the QP file should look like. 
 
-### New in version 0.2.1!
+### Adding new columns easily
 
-To avoid opening and saving the file in an external program such as Microsoft Excel or LibreOffice Calc, you can use the bash file ```add_columns_to_qp_file.sh``` to add the necessary columns to the CSV file. For instance, the following command:
+In general, you must **avoid editing** (reading/viewing is still okay) the QP data CSV file in software such as LibreOffice Calc or Microsoft Excel, because these programs can truncate important significant digits at the time of saving the CSV file. 
+
+To add columns to the QP files, you can use the bash file ```add_columns_to_qp_file.sh``` to add the necessary columns to the CSV file. For instance, the following command:
 ```
 bash add_columns_to_qp_file.sh quadrature_point_data.csv max_iso_stress_muscle 200000 muscle_fibre_orientation_x 0.939692620785908 muscle_fibre_orientation_y 0 muscle_fibre_orientation_z 0.342020143325669 fat_fraction 0
 ```
-would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, and ```fat_fraction``` to the file ```quadrature_point_data.csv``` with values 200000, 0.939692620785908, 0, 0.342020143325669, and 0, respectively.
+would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, and ```fat_fraction``` to the file ```quadrature_point_data.csv``` with values 200000, 0.939692620785908, 0, 0.342020143325669, and 0, respectively. However, if different tissues have different fibre orientations (for instance), you might need to further modify this file using Matlab's `readtable` function or Python's `read_csv` function from the `pandas` library. As an example, check the Matlab script `other_resources/add_columns_to_qp_file_with_aponeurosis.m`.
+
+### Different meshes require different QP files
+
+You may have noticed that in the `qp_files` folder there are more files than just the `quadrature_point_data_2.csv` file listed in `parameters.prm`. This is because, if you change the `Grid refinement level` parameter for the mesh included in this code, you would need a different QP files since each file has (# QP points x # cells) rows. We have added in this folder the files `quadrature_point_data_3.csv` and `quadrature_point_data_4.csv` corresponding to grid refinement levels 3 and 4, respectively.
 
 ## 3. Set up markers
 
@@ -119,7 +132,7 @@ You may combine these flags as needed. If you are reading a mesh from file, reme
 ./flexodeal -MESH_FILE=an_awesome_mesh.msh
 ```
 
-## Output using binary files: what they are and how to read them
+### Output using binary files: what they are and how to read them
 
 A binary file is a file that contains data in a format that is not directly readable by humans. Unlike text files, which store data as plain text (ASCII or Unicode), binary files store data in raw binary format, which is optimized for computer processing rather than human readability.
 
@@ -155,6 +168,7 @@ The first type of files exports binary files named `cell_data_main-3d-XYZ.data`,
 18. `orientation_x` (X component of current fibre orientation)
 19. `orientation_y` (Y component of current fibre orientation)
 20. `orientation_z` (Z component of current fibre orientation)
+21. `tissue_id` (Tissue ID of QP)
 
 The second type of files are named `cell_data_tensors-3d-XYZ.data` and contains the following columns (see the comments in the parameter file to view the exact name of each column, 68 columns in total):
 - Column 1: `qp_x`
@@ -169,6 +183,7 @@ The second type of files are named `cell_data_tensors-3d-XYZ.data` and contains 
 - Columns 42-50: `tau_muscle_active_i_j`, the (i,j) component of `tau_muscle_active`
 - Columns 51-59: `tau_muscle_passive_i_j`, the (i,j) component of `tau_muscle_active`
 - Columns 60-68: `tau_muscle_base_i_j`, the (i,j) component of `tau_muscle_base`
+- Column 69: `tissue_id` (Tissue ID of QP)
 
 To read these files in Matlab, use the following function:
 ```
@@ -181,7 +196,15 @@ function df = read_binary(filename, ncols)
 % ncols is the number of columns the array is expected to have.
 
 fid = fopen(filename);
-df = fread(fid,Inf,"float32");
+df = fread(fid, Inf, "float32");
 df = reshape(df', ncols, length(df)/ncols)';
 fclose(fid);
 ```
+
+### What am I running and how long should that take?
+
+When calling `./flexodeal` right after `make`ing the software, you are running a dynamic, cyclic contraction (1 second of simulation time) of an idealized human medial gastrocnemius. Using `set Type of simulation = dynamic` (i.e. with force-velocity properties) would run the whole simulation in about 8-10 minutes using an Intel i5-9600K (3.70 GHz x 6) processor. On the other hand, setting `set Type of simulation = quasi-static` (i.e. _without_ force-velocity properties) runs the code in about 5-6 minutes. Both computations write the following amounts of data:
+- About 36 MB if `set Output binary files main variables = false` and `set Output binary files tensors = false`,
+- About 231 MB if `set Output binary files main variables = true` and `set Output binary files tensors = false` (this is the option by default in the parameters file),
+- About 869 MB if `set Output binary files main variables = true` and `set Output binary files tensors = true`.
+

@@ -229,14 +229,14 @@ subsection Output binary files
     # needed.
 
     # File 1: cell_data_main-3d-XYZ.data (XYZ: time step)
-    # Number of columns: 20
+    # Number of columns: 21
     # Columns: qp_x, qp_y, qp_z, JxW, det_F, u1, u2, u3, v1, v2, v3, p, D,
     #          stretch, stretch_bar, strain_rate, strain_rate_bar,
-    #          orientation_x, orientation_y, orientation_z
+    #          orientation_x, orientation_y, orientation_z, tissue_id
     set Output binary files main variables = true
 
     # File 2: cell_data_tensors-3d-XYZ.data (XYZ: time step)
-    # Number of columns: 68
+    # Number of columns: 69
     # Columns: qp_x, qp_y, qp_z, JxW, det_F,
     #          F_1_1, F_1_2, F_1_3, F_2_1, F_2_2, F_2_3, F_3_1, F_3_2, F_3_3,
     #          tau_1_1, tau_1_2, tau_1_3, tau_2_1, tau_2_2, tau_2_3, tau_3_1, tau_3_2, tau_3_3,
@@ -244,6 +244,7 @@ subsection Output binary files
     #          tau_iso_1_1, tau_iso_1_2, tau_iso_1_3, tau_iso_2_1, tau_iso_2_2, tau_iso_2_3, tau_iso_3_1, tau_iso_3_2, tau_iso_3_3,
     #          tau_muscle_active_1_1, tau_muscle_active_1_2, tau_muscle_active_1_3, tau_muscle_active_2_1, tau_muscle_active_2_2, tau_muscle_active_2_3, tau_muscle_active_3_1, tau_muscle_active_3_2, tau_muscle_active_3_3,
     #          tau_muscle_passive_1_1, tau_muscle_passive_1_2, tau_muscle_passive_1_3, tau_muscle_passive_2_1, tau_muscle_passive_2_2, tau_muscle_passive_2_3, tau_muscle_passive_3_1, tau_muscle_passive_3_2, tau_muscle_passive_3_3,
-    #          tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3
+    #          tau_muscle_base_1_1, tau_muscle_base_1_2, tau_muscle_base_1_3, tau_muscle_base_2_1, tau_muscle_base_2_2, tau_muscle_base_2_3, tau_muscle_base_3_1, tau_muscle_base_3_2, tau_muscle_base_3_3,
+    #          tissue_id
     set Output binary files tensors = false
 end
