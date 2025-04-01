@@ -1073,17 +1073,14 @@ namespace Flexodeal
       // Update stretch_bar and strain_rate_bar using the current Newton iterate.
       orientation     = F_bar * initial_fibre_orientation;
       stretch_bar     = std::sqrt(orientation * orientation);
-      if (tissue_id == 1)
-      {
-        const SymmetricTensor<2,dim> 
-        symm_grad_velocity = Physics::Elasticity::Kinematics::d(F,grad_velocity);
-        const Tensor<2,dim> 
-        dev_symm_grad_velocity = Physics::Elasticity::StandardTensors<dim>::dev_P * symm_grad_velocity;
-        trace_d = first_invariant(symm_grad_velocity);
-      
-        strain_rate_bar = (1.0 / strain_rate_naught) * 
-                          orientation * (dev_symm_grad_velocity * orientation) / stretch_bar;
-      }
+      const SymmetricTensor<2,dim> 
+      symm_grad_velocity = Physics::Elasticity::Kinematics::d(F,grad_velocity);
+      const Tensor<2,dim> 
+      dev_symm_grad_velocity = Physics::Elasticity::StandardTensors<dim>::dev_P * symm_grad_velocity;
+      trace_d = first_invariant(symm_grad_velocity);
+    
+      strain_rate_bar = (1.0 / strain_rate_naught) * 
+                        orientation * (dev_symm_grad_velocity * orientation) / stretch_bar;
     }
 
     // The second function determines the Kirchhoff stress $\boldsymbol{\tau}
@@ -2140,7 +2137,9 @@ namespace Flexodeal
     // below will call all the other ones.
     void output_results();
     void output_vtk() const;
+    void output_velocity() const;
     void output_along_fibre_stretch() const;
+    void output_along_fibre_strain_rate() const;
     void output_energies() const;
     void output_forces() const;
     void output_mean_stretch_and_pennation() const;
@@ -4877,7 +4876,9 @@ namespace Flexodeal
     timer.enter_subsection("Output results");
 
     output_vtk();
+    output_velocity();
     output_along_fibre_stretch();
+    output_along_fibre_strain_rate();
     output_energies();
     output_forces();
     output_mean_stretch_and_pennation();
@@ -4937,6 +4938,75 @@ namespace Flexodeal
 
     std::ostringstream filename;
     filename << save_dir << "/solution-" << dim << "d-" 
+             << std::setfill('0') << std::setw(3) << time.get_timestep() << ".vtu";
+    
+    std::ofstream output(filename.str().c_str());
+    data_out.write_vtu(output);
+  }
+
+  // @sect4{Solid::output_velocity}
+
+  // For dynamic simulations, we output the velocity field
+  // via projection from quadrature point data using the
+  // VectorTools::project function, which at the time of
+  // writing this code, only supports scalar-valued data
+  template <int dim>
+  void Solid<dim>::output_velocity() const
+  {
+    // This function only makes sense for dynamic computations 
+    // (no velocity is computed in quasi-static simulations).
+    if (parameters.type_of_simulation != "dynamic")
+      return void();
+
+    // Create finite element
+    FE_Q<dim> fe_vel(parameters.poly_degree);
+    DoFHandler<dim> dof_handler_vel(triangulation);
+    dof_handler_vel.distribute_dofs(fe_vel);
+
+    // Create velocity components
+    std::vector<Vector<double>> velocity(dim, Vector<double>());
+    for (unsigned int i = 0; i < dim; ++i)
+      velocity[i].reinit(dof_handler_vel.n_dofs());
+
+    // Project each component
+    AffineConstraints<double> constraints;
+    constraints.close();
+    for (unsigned int i = 0; i < dim; ++i)
+      VectorTools::project(
+        MappingQ<dim>(1),
+        dof_handler_vel,
+        constraints,
+        qf_cell,
+        [&] (const typename DoFHandler<dim>::active_cell_iterator &cell,
+             const unsigned int q_point) -> double
+        {
+          const std::vector<std::shared_ptr<const PointHistory<dim>>> 
+          lqph = quadrature_point_history.get_data(cell);
+          // At this point, after solving the nonlinear system and before 
+          // going into the next time step,the variable returned by
+          // get_velocity_previous() contains the information of the 
+          // *current* velocity.
+          Tensor<1,dim> local_velocity = lqph[q_point]->get_velocity_previous();
+          return local_velocity[i];
+        },
+        velocity[i]
+      );
+
+    // Export to VTK
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler_vel);
+    data_out.add_data_vector(velocity[0], "velocity_x");
+    data_out.add_data_vector(velocity[1], "velocity_y");
+    data_out.add_data_vector(velocity[2], "velocity_z");
+    
+    Vector<double> soln(solution_n.size());
+    for (unsigned int i = 0; i < soln.size(); ++i)
+      soln(i) = solution_n(i);
+    MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
+    data_out.build_patches(q_mapping, degree);
+
+    std::ostringstream filename;
+    filename << save_dir << "/velocity-" << dim << "d-" 
              << std::setfill('0') << std::setw(3) << time.get_timestep() << ".vtu";
     
     std::ofstream output(filename.str().c_str());
@@ -5029,6 +5099,66 @@ namespace Flexodeal
 
     std::ostringstream filename;
     filename << save_dir << "/stretch-" << dim << "d-" 
+             << std::setfill('0') << std::setw(3) << time.get_timestep() << ".vtu";
+    
+    std::ofstream output(filename.str().c_str());
+    data_out.write_vtu(output);
+  }
+
+  // @sect4{Solid::output_along_fibre_strain_rate}
+
+  // For dynamic simulations, we output the fibre strain rate
+  // for visualization in Paraview. We follow the same idea
+  // as in Solid<dim>::output_velocity
+  template <int dim>
+  void Solid<dim>::output_along_fibre_strain_rate() const
+  {
+    // This function only makes sense for dynamic computations 
+    // (no velocity is computed in quasi-static simulations).
+    if (parameters.type_of_simulation != "dynamic")
+      return void();
+
+    // Create finite element
+    FE_DGQ<dim> fe_stretch(degree);
+    DoFHandler<dim> dof_handler_stretch(triangulation);
+    dof_handler_stretch.distribute_dofs(fe_stretch);
+
+    // Create strain rate for output
+    Vector<double> strain_rate;
+    strain_rate.reinit(dof_handler_stretch.n_dofs());
+
+    // Project
+    AffineConstraints<double> constraints;
+    constraints.close();
+    VectorTools::project(
+      MappingQ<dim>(1),
+      dof_handler_stretch,
+      constraints,
+      qf_cell,
+      [&] (const typename DoFHandler<dim>::active_cell_iterator &cell,
+           const unsigned int q_point) -> double
+        {
+          const std::vector<std::shared_ptr<const PointHistory<dim>>> 
+          lqph = quadrature_point_history.get_data(cell);
+          double local_strain_rate = lqph[q_point]->get_strain_rate();
+          return local_strain_rate;
+        },
+      strain_rate
+    );
+
+    // Export to VTK
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler_stretch);
+    data_out.add_data_vector(strain_rate, "strain_rate");
+
+    Vector<double> soln(solution_n.size());
+    for (unsigned int i = 0; i < soln.size(); ++i)
+      soln(i) = solution_n(i);
+    MappingQEulerian<dim> q_mapping(degree, dof_handler, soln);
+    data_out.build_patches(q_mapping, degree);
+
+    std::ostringstream filename;
+    filename << save_dir << "/strain-rate-" << dim << "d-" 
              << std::setfill('0') << std::setw(3) << time.get_timestep() << ".vtu";
     
     std::ofstream output(filename.str().c_str());
