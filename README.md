@@ -1,5 +1,8 @@
 # What is Flexodeal?
 
+![Active, fully dynamic MSK simulation of a medial gastrocnemius](other_resources/mg_fibres_active.png "Active dynamic MG")
+Watch the video! [https://www.youtube.com/watch?v=UtFPTZ7JW0w](https://www.youtube.com/watch?v=UtFPTZ7JW0w)
+
 Flexodeal is a computational library designed to perform three-dimensional dynamic or quasi-static deformations of skeletal muscle tissue using a Hill-type muscle model and the finite element library [deal.II](https://www.dealii.org).
 
 The underlying material properties and numerical algorithms, are described in the following paper:
