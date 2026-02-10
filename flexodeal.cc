@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------
  *
  * Flexodeal
- * Copyright (C) 2024 Neuromuscular Mechanics Laboratory
+ * Copyright (C) 2026 Neuromuscular Mechanics Laboratory
  *
  * This file is part of the Flexodeal library
  *
@@ -14,15 +14,10 @@
  *
  * ---------------------------------------------------------------------
  * 
- * Author: Javier Almonacid
- *         PhD Candidate, Applied and Computational Mathematics
- *         Neuromuscular Mechanics Laboratory (NML)
- *         Simon Fraser University
- *         Spring 2024
- * 
  * This software has been created based on the "muscle code" developed by
  * members of the NML since 2014:
  * 
+ *         Javier A. Almonacid
  *         Harshil Pathak
  *         Ryan N. Konno
  *         Cassidy Tam
@@ -480,7 +475,7 @@ namespace Flexodeal
     {
       std::string type_lin;
       double      tol_lin;
-      double      max_iterations_lin;
+      int         max_iterations_lin;
       bool        use_static_condensation;
       std::string preconditioner_type;
       double      preconditioner_relaxation;
@@ -534,7 +529,7 @@ namespace Flexodeal
       {
         type_lin                  = prm.get("Solver type");
         tol_lin                   = prm.get_double("Residual");
-        max_iterations_lin        = prm.get_double("Max iteration multiplier");
+        max_iterations_lin        = prm.get_integer("Max iteration multiplier");
         use_static_condensation   = prm.get_bool("Use static condensation");
         preconditioner_type       = prm.get("Preconditioner type");
         preconditioner_relaxation = prm.get_double("Preconditioner relaxation");
@@ -1669,7 +1664,7 @@ namespace Flexodeal
     void setup_lqp(const Parameters::AllParameters &parameters,
                    const std::map<std::string, double> &qp_data)
     { 
-      const unsigned int tissue_id = qp_data.at("tissue_id");
+      const unsigned int tissue_id = (unsigned int)qp_data.at("tissue_id");
 
       try
       {
