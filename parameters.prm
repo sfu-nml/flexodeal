@@ -75,12 +75,6 @@ end
 
 
 subsection Materials
-  # Quadrature point (QP) information.
-  # Make sure to use the right QP file! Each mesh
-  # yields a different list of quadrature points,
-  # so this file must be updated accordingly.
-  set QP list filename = qp_files/quadrature_point_data_2.csv
-
   # Density of muscle [kg/m^3]
   set Muscle density = 1060
 
@@ -95,8 +89,8 @@ subsection Materials
   # Maximum strain rate [1/s]
   set Max strain rate = 5.0
 
-  # Initial fibre orientation (must be a unit vector):
-  # input via quadrature point table (CSV file)
+  # Initial fibre orientation to be set according to the
+  # pennation angle given in the Geometry section.
   
   # ------------ Muscle base material properties ----------------
 
@@ -169,7 +163,8 @@ subsection Materials
   # Constants in Neo-Hookean strain-energy function
   set Fat constant 1 = 1.3e+05
 
-  # Fat fraction: input via quadrature point table (CSV file)
+  # Fat fraction
+  set Fat fraction = 0.0
 end
 
 
@@ -233,7 +228,7 @@ subsection Output binary files
     # Columns: qp_x, qp_y, qp_z, JxW, det_F, u1, u2, u3, v1, v2, v3, p, D,
     #          stretch, stretch_bar, strain_rate, strain_rate_bar,
     #          orientation_x, orientation_y, orientation_z, tissue_id
-    set Output binary files main variables = true
+    set Output binary files main variables = false
 
     # File 2: cell_data_tensors-3d-XYZ.data (XYZ: time step)
     # Number of columns: 69

@@ -97,6 +97,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fstream>
+#include <filesystem> // C++ 17
 
 
 // Then, we place all functions and classes inside a namespace of its own.
@@ -253,7 +254,6 @@ namespace Flexodeal
     // surrounded by a base material.
     struct MuscleProperties
     {
-      std::string qp_list_filename;
       double muscle_density;
 
       // Muscle fibre properties
@@ -294,6 +294,7 @@ namespace Flexodeal
       double kappa_fat;
       double fat_factor;
       double fat_c1;
+      double fat_fraction;
 
       static void
       declare_parameters(ParameterHandler &prm);
@@ -306,10 +307,6 @@ namespace Flexodeal
     {
       prm.enter_subsection("Materials");
       {
-        prm.declare_entry("QP list filename", "",
-                          Patterns::FileName(),
-                          "QP list filename");
-
         prm.declare_entry("Muscle density", "1060",
                           Patterns::Double(),
                           "Muscle tissue density");
@@ -420,6 +417,10 @@ namespace Flexodeal
         prm.declare_entry("Fat constant 1", "1.3e+05",
                           Patterns::Double(),
                           "Fat constant 1 in Neo-Hookean SEF");
+
+        prm.declare_entry("Fat fraction", "0.2",
+                          Patterns::Double(),
+                         "Intramuscular fat fraction");
       }
       prm.leave_subsection();
     }
@@ -428,7 +429,6 @@ namespace Flexodeal
     {
       prm.enter_subsection("Materials");
       {
-        qp_list_filename        = prm.get("QP list filename");
         muscle_density          = prm.get_double("Muscle density");
 
         max_iso_stress_muscle   = prm.get_double("Sigma naught muscle");
@@ -462,6 +462,7 @@ namespace Flexodeal
         kappa_fat  = prm.get_double("Bulk modulus fat");
         fat_factor = prm.get_double("Fat factor");
         fat_c1     = prm.get_double("Fat constant 1");
+        fat_fraction = prm.get_double("Fat fraction");
       }
       prm.leave_subsection();
     }
@@ -2419,7 +2420,23 @@ namespace Flexodeal
 +------------------------------------------------------+
     )" << std::endl;
 
-    // Create directory to store all the outputs
+    // If qp_list_only is true, write QP file and return.
+    // output_qp_list will require the triangulation object,
+    // so this function can only be called after make_grid().
+    if (varargs.at("-QP_LIST_ONLY") == "true")
+    {
+      // Make or read grid, depending on the input
+      if (varargs.at("-MESH_FILE").empty())
+        make_grid();
+      else
+        read_grid(varargs.at("-MESH_FILE"));
+
+      output_qp_list();
+      
+      return void();
+    }
+
+    // Otherwise, create directory to store all the outputs.
     if (mkdir(save_dir, 0777) == -1)
     {
       if (errno == EEXIST)
@@ -2427,24 +2444,24 @@ namespace Flexodeal
       else
         std::cerr << "mkdir error:  " << strerror(errno) << std::endl;
     }
-      
-    
+
     // Make or read grid, depending on the input
     if (varargs.at("-MESH_FILE").empty())
+    {
       make_grid();
+      // Store the grid on disk for future reference.
+      std::ostringstream filename;
+      filename << save_dir << "/grid-" << dim << "d"<< ".msh";
+      GridOut           grid_out;
+      GridOutFlags::Msh write_flags;
+      write_flags.write_faces = true;
+      grid_out.set_flags(write_flags);
+      std::ofstream output(filename.str().c_str());
+      grid_out.write_msh(triangulation, output);
+    }
     else
       read_grid(varargs.at("-MESH_FILE"));
-    
-    // If qp_list_only is true, write QP file and return.
-    // output_qp_list will require the triangulation object,
-    // so this function can only be called after make_grid().
-    if (varargs.at("-QP_LIST_ONLY") == "true")
-    {
-      output_qp_list();
-      std::cout << "QP table generated!" << std::endl;
-      return void();
-    }
-
+  
     // Store parameters file
     {
       std::ostringstream prm_output_filename;
@@ -2968,17 +2985,6 @@ namespace Flexodeal
               << "\n\t Fibre/LOA angle (beta_0):  " << parameters.pennation_angle * 180.0 / M_PI << " degrees"
               << "\n" << std::endl;
 
-    // then, we output the grid used for future reference.
-    {
-      std::ostringstream filename;
-      filename << save_dir << "/grid-" << dim << "d"<< ".msh";
-      GridOut           grid_out;
-      GridOutFlags::Msh write_flags;
-      write_flags.write_faces = true;
-      grid_out.set_flags(write_flags);
-      std::ofstream output(filename.str().c_str());
-      grid_out.write_msh(triangulation, output);
-    }
   }
 
   template <int dim>
@@ -3011,7 +3017,19 @@ namespace Flexodeal
   void Solid<dim>::output_qp_list()
   {
       std::ostringstream filename;
-      filename << parameters.qp_list_filename;
+      // Decide on a filename based on whether a custom mesh has been
+      // provided or not.
+      std::string mesh_file = varargs.at("-MESH_FILE");
+      if (mesh_file.empty())
+        filename << "qp_data.backup.qp.csv";
+      else
+      {
+        // If filename is, say, my_mesh.msh, then the QP file will be
+        // named my_mesh.backup.qp.csv
+        std::filesystem::path p(mesh_file);
+        std::filesystem::path qp_file_prefix = p.parent_path() / p.stem();
+        filename << qp_file_prefix.string() << ".backup.qp.csv";
+      }
       std::ofstream output(filename.str().c_str());
 
       // The first thing is to output the column names. 
@@ -3041,6 +3059,8 @@ namespace Flexodeal
                  << qp_x << "," << qp_y << "," << qp_z << "," << tissue_id << "\n";
         }
       }
+
+      std::cout << "QP table generated: " << filename.str() << std::endl;
     }
 
   // @sect4{Solid::determine_boundary_ids}
@@ -3325,109 +3345,184 @@ namespace Flexodeal
                                         triangulation.end(),
                                         n_q_points);
 
-    // We now read the QP-dependent information. Here, we assume that
-    // the quadrature points follow the same (row) order as the output
-    // from output_qp_list(). Therefore, we perform this operation
-    // *within* the q_point loop.
-
-    std::ifstream infile(parameters.qp_list_filename);
-
-    if (infile.fail())
-      throw std::invalid_argument("Cannot open file: " 
-              + parameters.qp_list_filename 
-              + ". Make sure the file exists and it has read permissions.");
-    
-    std::string line;
-    std::vector<std::string> headers;
-    std::vector<double> qp_info;
-
-     // Read and store the header line
-    if (std::getline(infile, line)) 
+    // If a custom QP_FILE is not given, then we handle the QP file internally.
+    if (varargs.at("-QP_FILE").empty())
     {
-      std::stringstream ss(line);
-      std::string value;
-
-      // Split the header line into tokens and store them
-      while (std::getline(ss, value, ',')) 
-        headers.push_back(value);
+      // Precompute angle for aponeurosis fibre orientation
+      const double 
+      beta_apo = std::asin(parameters.muscle_length * std::sin(parameters.pennation_angle) 
+                            / parameters.aponeurosis_length) - parameters.pennation_angle;
       
-      // If the CSV file was saved in Windows, the last key
-      // will contain the carriage return (CR) character \r.
-      // We must remove this.
-      std::string& last_value = headers.back();
-      last_value.erase(std::remove(last_value.begin(), last_value.end(), '\r'), 
-                       last_value.end());
-    }
-
-    // Initialize an FEValues element to check that QPs match
-    // the given list
-    FEValues<dim> fe_values(fe, qf_cell, update_quadrature_points);
-           
-    // Note that when the quadrature point data is retrieved,
-    // it is returned as a vector of smart pointers.
-    for (const auto &cell : triangulation.active_cell_iterators())
-    {
-      fe_values.reinit(cell);
-      const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
-
-      const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
-        quadrature_point_history.get_data(cell);
-      Assert(lqph.size() == n_q_points, ExcInternalError());
-
-      for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+      // Initialize an FEValues element to obtain QP location.
+      FEValues<dim> fe_values(fe, qf_cell, update_quadrature_points);
+      
+      for (const auto &cell : triangulation.active_cell_iterators())
       {
-        std::getline(infile, line);
+        fe_values.reinit(cell);
+        const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
+
+        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+          quadrature_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        auto tissue_id = cell->material_id();
+
+        for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+        {
+          std::map<std::string, double> qp_data;
+          
+          // Set location
+          qp_data["qp_x"] = qp[q_point][0];
+          qp_data["qp_y"] = qp[q_point][1];
+          qp_data["qp_z"] = qp[q_point][2];
+          
+          // Set tissue ID
+          qp_data["tissue_id"] = (double)tissue_id;
+
+          // Depending on the tissue ID, we set material properties
+          // (including fibre orientation particular to the default grid)
+          switch ((unsigned int)tissue_id)
+          {
+          case 1:
+            // Muscle
+            qp_data["max_iso_stress_muscle"] = parameters.max_iso_stress_muscle;
+            qp_data["muscle_fibre_orientation_x"] = std::cos(parameters.pennation_angle);
+            qp_data["muscle_fibre_orientation_y"] = 0.0;
+            qp_data["muscle_fibre_orientation_z"] = std::sin(parameters.pennation_angle);
+            qp_data["fat_fraction"] = parameters.fat_fraction;
+            break;
+
+          case 2:
+            // Aponeurosis
+            qp_data["max_iso_stress_muscle"] = parameters.max_iso_stress_aponeurosis;
+            qp_data["muscle_fibre_orientation_x"] = std::cos(beta_apo);
+            qp_data["muscle_fibre_orientation_y"] = 0.0;
+            qp_data["muscle_fibre_orientation_z"] = -std::sin(beta_apo);
+            qp_data["fat_fraction"] = 0.0;
+            break;
+          
+          case 3:
+            qp_data["max_iso_stress_muscle"] = parameters.max_iso_stress_tendon;
+            qp_data["muscle_fibre_orientation_x"] = 1.0;
+            qp_data["muscle_fibre_orientation_y"] = 0.0;
+            qp_data["muscle_fibre_orientation_z"] = 0.0;
+            qp_data["fat_fraction"] = 0.0;
+            break;
+          }
+
+          lqph[q_point]->setup_lqp(parameters, qp_data);
+        }
+      }
+
+      std::cout << "\n    Quadrature point data set using "
+                << "constant values from parameter file.\n" << std::endl;
+    }
+    else
+    {
+      // We now read the QP-dependent information. Here, we assume that
+      // the quadrature points follow the same (row) order as the output
+      // from output_qp_list(). Therefore, we perform this operation
+      // *within* the q_point loop.
+
+      std::ifstream infile(varargs.at("-QP_FILE"));
+
+      if (infile.fail())
+        throw std::invalid_argument("Cannot open file: " 
+                + varargs.at("-QP_FILE") 
+                + ". Make sure the file exists and it has read permissions.");
+      
+      std::string line;
+      std::vector<std::string> headers;
+
+      // Read and store the header line
+      if (std::getline(infile, line)) 
+      {
         std::stringstream ss(line);
         std::string value;
-        std::vector<std::string> tokens;
-        std::map<std::string, double> qp_data;
 
-        // Split the line into tokens
+        // Split the header line into tokens and store them
         while (std::getline(ss, value, ',')) 
-          tokens.push_back(value);
-
-        // Create map that will store the qp_data
-        for (unsigned int k = 0; k < headers.size(); ++k)
-          qp_data[headers[k]] = std::stod(tokens[k]);
-
-        // Double check that quadrature points are correctly listed
-        {
-          DeclException2(
-            ExcEvaluationPointNotFound,
-            Point<dim>, Point<dim>,
-            << "Quadrature point provided in input table (" 
-            << arg1
-            << ") does not match internal order (I was expecting "
-            << arg2
-            << "). Check that you are using the correct QP file. If not, "
-            << "regenerate this list using \"./flexodeal -QP_LIST_ONLY\".");
-
-          const Point<dim> qp_in_list = qp[q_point];
-          const Point<dim> qp_in_table(std::stod(tokens[0]),
-                                       std::stod(tokens[1]),
-                                       std::stod(tokens[2]));
-          // Compute the (relative) distance between the point in the deal.II 
-          // list and the point in the QP file.
-          const double distance = qp_in_table.distance(qp_in_list) / 
-                                  qp_in_list.distance(Point<dim>());
-          // The points are the same if they have at least the same first 4
-          // significant digits.
-          const bool qps_match = (distance < 1e-4);
-          if (!qps_match)
-            AssertThrow(qps_match,
-                        ExcEvaluationPointNotFound(qp_in_table, qp_in_list));
-        }
+          headers.push_back(value);
         
-        // Setup current QP
-        lqph[q_point]->setup_lqp(parameters, qp_data);
+        // If the CSV file was saved in Windows, the last key
+        // will contain the carriage return (CR) character \r.
+        // We must remove this.
+        std::string& last_value = headers.back();
+        last_value.erase(std::remove(last_value.begin(), last_value.end(), '\r'), 
+                        last_value.end());
       }
+
+      // Initialize an FEValues element to check that QPs match
+      // the given list
+      FEValues<dim> fe_values(fe, qf_cell, update_quadrature_points);
+            
+      // Note that when the quadrature point data is retrieved,
+      // it is returned as a vector of smart pointers.
+      for (const auto &cell : triangulation.active_cell_iterators())
+      {
+        fe_values.reinit(cell);
+        const std::vector<Point<dim>> qp = fe_values.get_quadrature_points();
+
+        const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
+          quadrature_point_history.get_data(cell);
+        Assert(lqph.size() == n_q_points, ExcInternalError());
+
+        for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+        {
+          std::getline(infile, line);
+          std::stringstream ss(line);
+          std::string value;
+          std::vector<std::string> tokens;
+          std::map<std::string, double> qp_data;
+
+          // Split the line into tokens
+          while (std::getline(ss, value, ',')) 
+            tokens.push_back(value);
+
+          // Create map that will store the qp_data
+          for (unsigned int k = 0; k < headers.size(); ++k)
+            qp_data[headers[k]] = std::stod(tokens[k]);
+
+          // Double check that quadrature points are correctly listed
+          {
+            DeclException2(
+              ExcEvaluationPointNotFound,
+              Point<dim>, Point<dim>,
+              << "Quadrature point provided in input table (" 
+              << arg1
+              << ") does not match internal order (I was expecting "
+              << arg2
+              << "). Check that you are using the correct QP file. If not, "
+              << "regenerate this list using \"./flexodeal -QP_LIST_ONLY\".");
+
+            const Point<dim> qp_in_list = qp[q_point];
+            const Point<dim> qp_in_table(std::stod(tokens[0]),
+                                        std::stod(tokens[1]),
+                                        std::stod(tokens[2]));
+            // Compute the (relative) distance between the point in the deal.II 
+            // list and the point in the QP file.
+            const double distance = qp_in_table.distance(qp_in_list) / 
+                                    qp_in_list.distance(Point<dim>());
+            // The points are the same if they have at least the same first 4
+            // significant digits.
+            const bool qps_match = (distance < 1e-4);
+            if (!qps_match)
+              AssertThrow(qps_match,
+                          ExcEvaluationPointNotFound(qp_in_table, qp_in_list));
+          }
+          
+          // Setup current QP
+          lqph[q_point]->setup_lqp(parameters, qp_data);
+        }
+      }
+
+      infile.close();
+      
+      std::cout << "\n    Quadrature point data set using \""
+                << varargs.at("-QP_FILE")
+                << "\"\n" << std::endl;
     }
 
-    infile.close();
-    
-    std::cout << "\n    Quadrature point data set using \""
-              << parameters.qp_list_filename
-              << "\"\n" << std::endl;
   }
 
   // @sect4{Solid::update_qph_incremental}
@@ -6079,6 +6174,7 @@ int main(int argc, char* argv[])
   args["-QP_LIST_ONLY"] = "false";
   args["-MESH_FILE"] = "";
   args["-OUTPUT_DIR"] = "";
+  args["-QP_FILE"] = "";
 
   // Modify default values according to input
   {
@@ -6119,6 +6215,20 @@ int main(int argc, char* argv[])
       else
         args[key] = "true";
     }
+
+    // Perform some checks before going to the main program
+    const bool mesh_given = !args.at("-MESH_FILE").empty();
+    const bool qp_file_given = !args.at("-QP_FILE").empty();
+    const bool qp_list_only = args.at("-QP_LIST_ONLY") == "true";
+
+    std::cout << mesh_given << std::endl;
+    std::cout << (mesh_given && (!qp_file_given && !qp_list_only)) << std::endl;
+
+    if (qp_list_only && qp_file_given)
+      throw std::invalid_argument("-QP_LIST_ONLY and -QP_FILE cannot be used simultaneously.");
+    
+    if (mesh_given && (!qp_file_given && !qp_list_only))
+      throw std::invalid_argument("A non-empty -MESH_FILE flag requires either the -QP_LIST_ONLY flag or a non-empty -QP_FILE flag");
   }
 
   try
