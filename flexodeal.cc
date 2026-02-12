@@ -6221,9 +6221,6 @@ int main(int argc, char* argv[])
     const bool qp_file_given = !args.at("-QP_FILE").empty();
     const bool qp_list_only = args.at("-QP_LIST_ONLY") == "true";
 
-    std::cout << mesh_given << std::endl;
-    std::cout << (mesh_given && (!qp_file_given && !qp_list_only)) << std::endl;
-
     if (qp_list_only && qp_file_given)
       throw std::invalid_argument("-QP_LIST_ONLY and -QP_FILE cannot be used simultaneously.");
     
