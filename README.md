@@ -37,13 +37,131 @@ This coding framework has been used in the following studies:
 
 # How to use it
 
-In general, Flexodeal should be treated as modelling framework and not as a "works out of the box" solution. While some tensile experiments can be performed with minimal modifications, you should also be prepared to modify the code directly. Learn how to do this by learning more about how deal.II works: [https://www.dealii.org/current/doxygen/deal.II/Tutorial.html](https://www.dealii.org/current/doxygen/deal.II/Tutorial.html).
+In general, Flexodeal should be treated as modelling framework and not as a "works out of the box" solution. While some tensile experiments can be performed with minimal modifications, you should also be prepared to modify the code directly. Learn what to expect in terms of coding by learning more about how deal.II works: [https://www.dealii.org/current/doxygen/deal.II/Tutorial.html](https://www.dealii.org/current/doxygen/deal.II/Tutorial.html).
+
+## Case 1: Using the default geometry
+
+As usual in deal.II applications, Flexodeal requires a structured mesh made of hexahedral elements (hanging nodes are not supported at the moment). We call each hexahedral element in the mesh a *voxel*.
+
+By default, the computational domain is set to a simplified human medial gastrocnemius muscle, as previously described in:
+
+* Ross, S. A., Domínguez, S., Nigam, N., & Wakeling, J. M. (2021). The Energy of Muscle Contraction. III. Kinetic Energy During Cyclic Contractions. Frontiers in Physiology, 12(April), 1–16. https://doi.org/10.3389/fphys.2021.628819
+
+Below is an overall view of the meshed computational domain:
+
+![](other_resources/fl_mesh_idealized_mg.png)
+
+The geometry can be described using the parameters below (see the `parameters.prm` file for their numeric values):
+
+![](other_resources/geometry_with_aponeurosis.png)
+
+- $\widehat{\ell}$: line of action vector, currently set at <1,0,0> (i.e. aligned with the x axis).
+- $L_{mus}$ [m]: length of the muscle (in the direction of the line of action).
+- $L_{apo}$ [m]: length of the aponeurosis.
+- $W_{mus}$ [m]: width of the muscle and aponeurosis layers.
+- $T_{apo}$ [m]: thickness (height) of the aponeurosis layer
+- $\beta_0$ [deg]: initial pennation angle, considered between the line of action and the direction of the fibres.
+
+Other quantities, such as the initial fibre length $L_f$ and the angle between the aponeurosis and the muscle fibres $\alpha_0$ are computed automatically from trigonometric relations:
+$$
+\alpha_0 = \sin^{-1} \left( \dfrac{L_{mus}}{L_{apo}} \sin(\beta_0) \right); \quad \theta_0 := \alpha_0 - \beta_0, \quad L_f = L_{apo} \dfrac{\sin(\theta_0)}{\sin (\beta_0)}.
+$$
+
+Fibre orientations are set at each quadrature point (QP) as follows:
+$$
+\mathbf{a}_0(\mathbf{X}) = \left\{ \begin{aligned} 
+&\langle \cos(\beta_0), 0, \sin(\beta_0)\rangle, \quad &\text{at muscle QPs},
+\\
+&\langle \cos(\theta_0), 0 , -\sin(\theta_0) \rangle, \quad &\text{at aponeurosis QPs.} \end{aligned}\right.
+$$
+
+**About quadrature points (QPs):** Quadrature points are used to evaluate these integrals approximately by placing "evaluation points" within each element and using weights associated with these points to compute the integral. This helps in ensuring that the element-level calculations (like stiffness or mass matrices) are accurately represented in the global system, which is essential for the solution of the finite element problem. 
+
+The number of quadrature points is determined by the *order* of the quadrature rule. Flexodeal uses a [Gaussian quadrature](https://en.wikipedia.org/wiki/Gaussian_quadrature) rule and the order is specified in the ```parameters.prm``` file (see ```set Quadrature order``` in the ```Finite element system``` subsection). Below is a guideline to choose the correct order based on the chosen polynomial degree and whether the simulation is quasi-static or dynamic:
+
+| ```set Polynomial degree``` | ```set Type of simulation``` | ```set Quadrature order```| Number of QPs per voxel |
+|:---------------------------:|:----------------------------:|:-------------------------:|:-----------------------:|
+| 1 | quasi-static | 2 | 8   |
+| 1 | dynamic      | 2 | 8   |
+| 2 | quasi-static | 3 | 27  |
+| 2 | dynamic      | 4 | 64  |
+| 3 | quasi-static | 4 | 64  |
+| 3 | dynamic      | 5 | 125 |
+
+### Running the code
+
+To run Flexodeal using this default geometry and the default activation and strain parameters (corresponding to a 1-second cyclic contraction), simply run `make` and then
+```
+./flexodeal
+```
+You may use the `-OUTPUT_DIR` flag to change the directory in which the results will be stored.
+
+### Using variable properties through a quadrature point file
+
+You can set custom fibre orientations and intramuscular fat fractions at each quadrature point using a **quadrature point file** (which we will refer to as a "QP file"). 
+
+The first step in constructing the QP file is to generate the list of QPs:
+```
+./flexodeal -QP_LIST_ONLY
+```
+
+This should generate the file ```qp_data.backup.qp.csv```. The file will only contain four columns: ```qp_x```, ```qp_y```, ```qp_z```, and `tissue_id` denoting each one of the components of the QP and its material characteristics.
+
+Tissue ID is the way we differentiate muscle tissue from others, such as aponeurosis and tendon. As of this version of Flexodeal, the following IDs can be identified in tissue:
+
+| Tissue                             | ID  | 
+|:----------------------------------:|:---:|
+| Muscular                           |  1  |
+| Aponeurosis (internal or external) |  2  |
+| Tendon                             |  3  |
+
+Tissue IDs are assigned to each QP depending on the material ID (also called "physical ID") of each in which the QP is located. These material IDs are set **at the time the mesh is constructed**.
+
+The next step is to attach physiological properties to each one of these points. To do so:
+1. Create a copy of your backup file (recommended),
+2. Edit *this new* CSV file and insert a new column with the name of the property and the value for each point. At the moment, the following properties are supported (written as ```column header```: description [units]):
+* ```max_iso_stress_muscle```: maximum isometric stress of muscle [Pa].
+* ```muscle_fibre_orientation_x```: Initial fibre orientation vector (normalized), x component.
+* ```muscle_fibre_orientation_y```: Initial fibre orientation vector (normalized), y component.
+* ```muscle_fibre_orientation_z```: Initial fibre orientation vector (normalized), z component.
+* ```fat_fraction```: Fraction of intramuscular fat present in muscle. It is a number between 0 and 1.
+
+> :warning: *The order of these columns does not matter, however, it is important to use the correct header name, otherwise, the code will throw an error.*
+
+************** Review any of the QP files in the  ```qp_files``` folder to see how the QP file should look like. 
+
+### Adding new columns easily
+
+In general, you must **avoid editing** (reading/viewing is still okay) the QP data CSV file in software such as LibreOffice Calc or Microsoft Excel, because these programs can truncate important significant digits at the time of saving the CSV file. 
+
+To add columns to the QP files, you can use the bash file ```add_columns_to_qp_file.sh``` to add the necessary columns to the CSV file. For instance, the following command:
+```
+bash add_columns_to_qp_file.sh quadrature_point_data.csv max_iso_stress_muscle 200000 muscle_fibre_orientation_x 0.939692620785908 muscle_fibre_orientation_y 0 muscle_fibre_orientation_z 0.342020143325669 fat_fraction 0
+```
+would add the columns ```max_iso_stress```, ```muscle_fibre_orientation_x```, ```muscle_fibre_orientation_y```, ```muscle_fibre_orientation_z```, and ```fat_fraction``` to the file ```quadrature_point_data.csv``` with values 200000, 0.939692620785908, 0, 0.342020143325669, and 0, respectively. However, if different tissues have different fibre orientations (for instance), you might need to further modify this file using Matlab's `readtable` function or Python's `read_csv` function from the `pandas` library. As an example, check the Matlab script `other_resources/add_columns_to_qp_file_with_aponeurosis.m`.
+
+
+
+
+
+
+
+
+
+
+
+## Case 2: Using other geometries
+
+
+
+
+
 
 ## 1. Setting up the mesh and boundary IDs
 
 As usual in deal.II applications, Flexodeal requires a structured mesh made of hexahedral elements (hanging nodes are not supported at the moment). We call each hexahedral element in the mesh a *voxel*.
 
-You may generate the mesh in a different software and export it as a .msh file or make it using deal.II functions (see ```Solid<dim>::make_grid```). Either way, make sure that you have assigned the proper boundary IDs, since this will affect the way the boundary conditions are imposed in ```Solid<dim>::make_constraints```.
+You may generate the mesh in a different software and export it as a `.msh` file or generate it using deal.II functions (see ```Solid<dim>::make_grid```). Either way, make sure that you have assigned the proper boundary IDs, since this will affect the way the boundary conditions are imposed in ```Solid<dim>::make_constraints```.
 
 
 ## 2. Setting up the quadrature point table (requires a mesh)
