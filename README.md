@@ -63,11 +63,15 @@ The geometry can be described using the parameters below (see the `parameters.pr
 - $\beta_0$ [deg]: initial pennation angle, considered between the line of action and the direction of the fibres.
 
 Other quantities, such as the initial fibre length $L_f$ and the angle between the aponeurosis and the muscle fibres $\alpha_0$ are computed automatically from trigonometric relations:
+
 $$\alpha_0 = \sin^{-1} \left( \dfrac{L_{mus}}{L_{apo}} \sin(\beta_0) \right); \quad \theta_0 := \alpha_0 - \beta_0, \quad L_f = L_{apo} \dfrac{\sin(\theta_0)}{\sin (\beta_0)}.$$
 
 Fibre orientations are set at each quadrature point (QP) as follows:
-$$\mathbf{a}_0(\mathbf{X}) = \left\{ \begin{aligned} 
-&\langle \cos(\beta_0), 0, \sin(\beta_0)\rangle, \quad &\text{at muscle QPs},\\&\langle \cos(\theta_0), 0 , -\sin(\theta_0) \rangle, \quad &\text{at aponeurosis QPs.} \end{aligned}\right.$$
+
+$$\mathbf{a}_0(\mathbf{X}) = \begin{cases}
+\langle \cos(\beta_0), 0, \sin(\beta_0)\rangle, & \text{at muscle QPs}, \\
+\langle \cos(\theta_0), 0, -\sin(\theta_0)\rangle, & \text{at aponeurosis QPs}.
+\end{cases}$$
 
 **About quadrature points (QPs):** Quadrature points are used to evaluate these integrals approximately by placing "evaluation points" within each element and using weights associated with these points to compute the integral. This helps in ensuring that the element-level calculations (like stiffness or mass matrices) are accurately represented in the global system, which is essential for the solution of the finite element problem. 
 
