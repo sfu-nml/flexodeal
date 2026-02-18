@@ -126,8 +126,6 @@ The next step is to attach physiological properties to each one of these points.
 
 > :warning: *The order of these columns does not matter, however, it is important to use the correct header name, otherwise, the code will throw an error.*
 
-************** Review any of the QP files in the  ```qp_files``` folder to see how the QP file should look like. 
-
 An example of what the QP file should look like after adding these columns is available at `qp_data_2.qp.csv`. The following call is equivalent to `./flexodeal`:
 ```
 ./flexodeal -QP_FILE=qp_data_2.qp.csv
