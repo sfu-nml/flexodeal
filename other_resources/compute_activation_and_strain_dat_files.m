@@ -32,13 +32,13 @@ fclose(fid);
 
 % Create excitation profile
 emax = 1;
-duty_cycle = 0.3;
-excitation = emax * square_wave(time-0.81*Tend/8, freq, duty_cycle);
+duty_cycle = 0.55;
+excitation = emax * square_wave(time-0.65*Tend/8, freq, duty_cycle);
 plot(time, excitation)
 
 % Define parameters for Zajac's ODE and compute activation
-Tact = 0.045;
-beta = 0.6;
+Tact = 0.02;
+beta = 0.8;
 activation = zajac_activation_from_emg(time, excitation, Tact, beta);
 % Zero-out negative entries
 idx = find(activation < 0);
