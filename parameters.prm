@@ -40,10 +40,6 @@ subsection Geometry
   # Global grid scaling factor (note that this factor
   # scales the grid and nothing else)
   set Grid scale          = 1
-
-  # Ratio of applied pressure to reference pressure 
-  # [nondimensional]
-  set Pressure ratio p/p0 = 0
 end
 
 
