@@ -1,4 +1,6 @@
 .vscode/
+build/
+smoke_out/
 CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles
