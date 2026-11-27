@@ -166,10 +166,17 @@ Once you have set up your quadrature point file, you may run Flexodeal as
 ```
 ./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv
 ```
-This assumes that your activation profile is given in ```control_points_activation.dat```, your boundary strain in ```control_points_strain.dat``` and your parameters in ```parameters.prm```. If you want to use files with other names, you can use flags to override these default settings:
+This assumes that your activation profile is given in ```control_points_activation.dat```, your boundary strain in ```control_points_strain.dat```, your boundary pressure in ```control_points_pressure.dat``` and your parameters in ```parameters.prm```. If you want to use files with other names, you can use flags to override these default settings:
 ```
-./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv -PARAMETERS=other_parameters.prm -ACTIVATION=another_activation.dat -BDY_STRAIN=another_boundary_strain.dat
+./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv -PARAMETERS=other_parameters.prm -ACTIVATION=another_activation.dat -BDY_STRAIN=another_boundary_strain.dat -PRESSURE=another_pressure.dat
 ```
+A pressure file applies a time-dependent pressure on one or more boundary faces. Its first line lists the boundary IDs, and each following line gives a time and the pressure on each of those faces (interpolated linearly in time). For example, to ramp up the pressure on boundary ID 1 from 0 to 200 kPa over one second:
+```
+#time 1
+0.0 0.0
+1.0 200000
+```
+The traction is computed as $\mathbf{t} = p\,\mathbf{N}$, where $\mathbf{N}$ is the outward unit normal in the reference configuration, so a positive pressure pulls on the face and a negative pressure pushes on it. The boundary IDs present in the mesh are printed when Flexodeal starts. The default `control_points_pressure.dat` applies zero pressure, so it does not change the default experiment.
 You can also change the output directory by adding the ```-OUTPUT_DIR``` flag:
 ```
 ./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv -PARAMETERS=other_parameters.prm -ACTIVATION=another_activation.dat -BDY_STRAIN=another_boundary_strain.dat -OUTPUT_DIR=my_favourite_name_for_a_folder

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    container:
+      image: dealii/dealii:v9.7.1-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDEAL_II_DIR=/home/dealii/libs
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Run smoke tests
+        working-directory: build
+        run: ctest -L smoke --output-on-failure

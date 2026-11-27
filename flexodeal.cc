@@ -182,7 +182,6 @@ namespace Flexodeal
       double       muscle_width;
       double       pennation_angle;
       double       scale;
-      double       p_p0;
 
       static void declare_parameters(ParameterHandler &prm);
 
@@ -223,10 +222,6 @@ namespace Flexodeal
                           Patterns::Double(0.0),
                           "Global grid scaling factor");
 
-        prm.declare_entry("Pressure ratio p/p0",
-                          "100",
-                          Patterns::Selection("0|20|40|60|80|100"),
-                          "Ratio of applied pressure to reference pressure");
       }
       prm.leave_subsection();
     }
@@ -242,7 +237,6 @@ namespace Flexodeal
         muscle_width      = prm.get_double("Muscle width");
         pennation_angle   = prm.get_double("Pennation angle") * M_PI / 180.0;
         scale             = prm.get_double("Grid scale");
-        p_p0              = prm.get_double("Pressure ratio p/p0");
       }
       prm.leave_subsection();
     }
@@ -883,18 +877,26 @@ namespace Flexodeal
   public:
     TabularFunction(const std::string filename)
     {
-      initialize_map(filename);
+      initialize(filename);
     }
 
-    double operator()(const double t) const;
+    std::vector<double> operator()(const double t) const;
+
+    const std::vector<unsigned int> & get_columns() const
+    {
+      return columns;
+    }
 
   private:
-    std::map<double,double> table_values;
-    void initialize_map(const std::string filename);
+    std::vector<double> time;
+    std::vector<std::vector<double>> values;
+    std::vector<unsigned int> columns;
+
+    void initialize(const std::string &filename);
   };
 
-  // Read data (control points) and store them in the table_values map
-  void TabularFunction::initialize_map(const std::string filename)
+  // Read data (control points) and store them in values
+  void TabularFunction::initialize(const std::string &filename)
   {
     std::ifstream infile(filename);
 
@@ -904,34 +906,82 @@ namespace Flexodeal
       throw std::invalid_argument("Cannot open file: " + filename +  
             ". Make sure the file exists and it has read permissions.");
     
-    double x, y;
-    while (infile >> x >> y)
-      table_values.insert({x, y});
-  }
+    std::string line;
 
+    std::getline(infile, line);
+    std::istringstream check_stream(line);
+
+    std::string first_token;
+    check_stream >> first_token;
+
+    bool has_header = (first_token[0] == '#');
+    if(has_header)
+    {
+      std::istringstream header_stream(line);
+
+      std::string name;
+
+      header_stream >> name;
+
+      unsigned int col;
+
+      while(header_stream >>col)
+        columns.push_back(col);
+    }
+    else
+    {
+      infile.clear();
+      infile.seekg(0);
+    }
+    while(std::getline(infile, line))
+    {
+      if(line.empty())
+        continue;
+
+      std::istringstream iss(line);
+
+      double t;
+      iss >> t;
+      time.push_back(t);
+
+      double val;
+      std::vector<double> row;
+      while(iss >> val)
+        row.push_back(val);
+
+      values.push_back(std::move(row));
+    }
+  }
   // Evaluate the data:
   // - Interpolate if not found and t (independent variable) 
   //   is in data range
   // - Retrieve the original y coordinate if found
   // - Output a constant value if t exceeds data range
-  double TabularFunction::operator()(const double t) const
+  std::vector<double> TabularFunction::operator()(const double t) const
   {
-    double out = 1000000; /*Bogus value*/
-    auto iter_t = table_values.find(t);
+    if(t <= time.front())
+      return values.front();
     
-    if (iter_t == table_values.end()) /* Value not found: interpolate! */
-    {
-      if (t <= table_values.rbegin()->first)
-      {
-        auto t1 = table_values.upper_bound(t);
-        auto t0 = std::prev(t1);
-        out = ((t1->second - t0->second)/(t1->first - t0->first)) * (t - t0->first) + t0->second;
-      }
-      else
-        out = table_values.rbegin()->second; /* Constant after last point */
-    }
-    else /* Value found! Return this value */
-      out = iter_t->second;
+    if(t >= time.back())
+      return values.back();
+
+    auto it = std::lower_bound(time.begin(),time.end(),t);
+
+    size_t i1 = std::distance(time.begin(),it);
+
+    size_t i0 = i1 -1;
+
+    double t0 = time[i0];
+    double t1 = time[i1];
+
+    const auto &v0 = values[i0];
+    const auto &v1 = values[i1];
+    
+    size_t dim = v0.size();
+    std::vector<double> out(dim);
+
+    for(size_t j=0; j < dim; ++j)
+      out[j] = v0[j] + ((t - t0)/(t1-t0)) * (v1[j] - v0[j]);
 
     return out;
   }
@@ -2169,6 +2219,9 @@ namespace Flexodeal
     // Create activation profile
     TabularFunction activation_function;
 
+    // Create pressure profile
+    TabularFunction pressure_function;
+
     // A storage object for quadrature point information. As opposed to
     // step-18, deal.II's native quadrature point data manager is employed
     // here.
@@ -2297,6 +2350,7 @@ namespace Flexodeal
     , timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
     , u_dir(varargs.at("-BDY_STRAIN"))
     , activation_function(varargs.at("-ACTIVATION"))
+    , pressure_function(varargs.at("-PRESSURE"))
     , degree(parameters.poly_degree)
     ,
     // The Finite Element System is composed of dim continuous displacement
@@ -3603,7 +3657,7 @@ namespace Flexodeal
                                    scratch.solution_grads_u_total[q_point],
                                    scratch.solution_values_p_total[q_point],
                                    scratch.solution_values_J_total[q_point],
-                                   activation_function(time.current()),
+                                   activation_function(time.current())[0],
                                    time.get_delta_t());
   }
 
@@ -3675,8 +3729,8 @@ namespace Flexodeal
               << "Timestep " << time.get_timestep() << " @ " << time.current()
               << "s" << std::endl;
 
-    std::cout << "Current activation: " << activation_function(time.current()) * 100 << "%\n"
-              << "Current strain:     " << u_dir(time.current())
+    std::cout << "Current activation: " << activation_function(time.current())[0] * 100 << "%\n"
+              << "Current strain:     " << u_dir(time.current())[0]
               << std::endl;
 
     BlockVector<double> newton_update(dofs_per_block);
@@ -4259,20 +4313,20 @@ namespace Flexodeal
     // Next we assemble the Neumann contribution. We first check to see it the
     // cell face exists on a boundary on which a traction is applied and add
     // the contribution if this is the case.
-    //
-    // ********** TRACTION BOUNDARY CONDITION TEMPORARILY DISABLED *************
-    //
-    /* 
+    auto index = pressure_function.get_columns();
+    auto s = index.size();
     for (const auto &face : cell->face_iterators())
-      if (face->at_boundary() && face->boundary_id() == 6)
+      for (size_t j = 0; j < s; ++j)
         {
-          scratch.fe_face_values.reinit(cell, face);
-
-          for (const unsigned int f_q_point :
-               scratch.fe_face_values.quadrature_point_indices())
+          if (face->at_boundary() && face->boundary_id() == index[j])
             {
-              const Tensor<1, dim> &N =
-                scratch.fe_face_values.normal_vector(f_q_point);
+              scratch.fe_face_values.reinit(cell, face);
+
+              for (const unsigned int f_q_point :
+               scratch.fe_face_values.quadrature_point_indices())
+              {
+                const Tensor<1, dim> &N =
+                  scratch.fe_face_values.normal_vector(f_q_point);
 
               // Using the face normal at this quadrature point we specify the
               // traction in reference configuration. For this problem, a
@@ -4287,13 +4341,9 @@ namespace Flexodeal
               // Note that the contributions to the right hand side vector we
               // compute here only exist in the displacement components of the
               // vector.
-              static const double p0 =
-                -4.0 / (parameters.scale * parameters.scale);
-              const double         time_ramp = (time.current() / time.end());
-              const double         pressure  = p0 * parameters.p_p0 * time_ramp;
-              const Tensor<1, dim> traction  = pressure * N;
-
-              for (const unsigned int i : scratch.fe_values.dof_indices())
+                const double         pressure  = pressure_function(time.current())[j];
+                const Tensor<1, dim> traction  = pressure * N;
+                for (const unsigned int i : scratch.fe_values.dof_indices())
                 {
                   const unsigned int i_group =
                     fe.system_to_base_index(i).first.first;
@@ -4309,10 +4359,9 @@ namespace Flexodeal
                       data.cell_rhs(i) += (Ni * traction[component_i]) * JxW;
                     }
                 }
-            }
-        }
-      */
-
+              }
+            }   
+        } 
     // Finally, we need to copy the lower half of the local matrix into the
     // upper half:
     for (const unsigned int i : scratch.fe_values.dof_indices())
@@ -4392,7 +4441,7 @@ namespace Flexodeal
             dof_handler,
             boundary_id,
             IncrementalDisplacement<dim>(
-              u_dir(time.current())*parameters.muscle_length,u_dir(time.previous())*parameters.muscle_length),
+              u_dir(time.current())[0]*parameters.muscle_length,u_dir(time.previous())[0]*parameters.muscle_length),
             constraints,
             (fe.component_mask(x_displacement) | fe.component_mask(y_displacement) | fe.component_mask(z_displacement)));
         }
@@ -5966,7 +6015,7 @@ namespace Flexodeal
       output.open(filename.str(), std::ios_base::app);
     
     double fibre_velocity = mean_strain_rate * initial_fibre_length * strain_rate_naught;
-    double end_velocity = (u_dir(time.current()) - u_dir(time.previous()))/time.get_delta_t();
+    double end_velocity = (u_dir(time.current())[0] - u_dir(time.previous())[0])/time.get_delta_t();
 
     output << time.current() << std::fixed 
            << std::setprecision(4) << std::scientific
@@ -6004,8 +6053,8 @@ namespace Flexodeal
 
     output << time.current() << std::fixed 
            << std::setprecision(4) << std::scientific
-           << "," << activation_function(time.current()) * 100
-           << "," << parameters.muscle_length * (u_dir(time.current()) + 1.0) << "\n";
+           << "," << activation_function(time.current())[0] * 100
+           << "," << parameters.muscle_length * (u_dir(time.current())[0] + 1.0) << "\n";
   }
 
   // @sect4{Output displacements at select locations}
@@ -6265,6 +6314,7 @@ int main(int argc, char* argv[])
   args["-ACTIVATION_LIST"] = "activation_list.dat";
   args["-QP_LIST_ONLY"] = "false";
   args["-MESH_FILE"] = "";
+  args["-PRESSURE"]   = "control_points_pressure.dat";
   args["-OUTPUT_DIR"] = "";
   args["-QP_FILE"] = "";
 
