@@ -158,7 +158,7 @@ It is important to note that the number of QPs depends directly on the amount of
 
 ### 2. Set up markers
 
-You may set a list of markers to track displacements at different points in the geometry. The list (by default, `markers.dat`, with the filename set in `parameters.prm` in the `Measuring locations` subsection) has four columns: the first one is a label and the other are the three components of the marker. Note that, in this context, a marker is a mesh vertex that contains displacement degrees of freedom. Therefore, every marker **must** be a vertex in the mesh. Check the file `markers.dat` to see the structure of this file. **If you do not know the location of any markers, just create an empty file with the name as given in `set Markers list file` inside `parameters.prm`.**
+You may set a list of markers to track displacements at different points in the geometry. The list (by default, `markers.dat`; use the `-MARKERS` flag to choose a different file) has four columns: the first one is a label and the other are the three components of the marker. Note that, in this context, a marker is a mesh vertex that contains displacement degrees of freedom. Therefore, every marker **must** be a vertex in the mesh. Check the file `markers.dat` to see the structure of this file. **If you do not know the location of any markers, just create an empty markers file and pass it with `-MARKERS`.**
 
 ### 3. Running the code
 
@@ -166,9 +166,9 @@ Once you have set up your quadrature point file, you may run Flexodeal as
 ```
 ./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv
 ```
-This assumes that your activation profile is given in ```control_points_activation.dat```, your boundary strain in ```control_points_strain.dat```, your boundary pressure in ```control_points_pressure.dat``` and your parameters in ```parameters.prm```. If you want to use files with other names, you can use flags to override these default settings:
+This assumes that your activation profile is given in ```control_points_activation.dat```, your boundary strain in ```control_points_strain.dat```, your boundary pressure in ```control_points_pressure.dat```, your markers in ```markers.dat``` and your parameters in ```parameters.prm```. If you want to use files with other names, you can use flags to override these default settings:
 ```
-./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv -PARAMETERS=other_parameters.prm -ACTIVATION=another_activation.dat -BDY_STRAIN=another_boundary_strain.dat -PRESSURE=another_pressure.dat
+./flexodeal -MESH_FILE=my_mesh.msh -QP_FILE=my_mesh.qp.csv -PARAMETERS=other_parameters.prm -ACTIVATION=another_activation.dat -BDY_STRAIN=another_boundary_strain.dat -PRESSURE=another_pressure.dat -MARKERS=other_markers.dat
 ```
 A pressure file applies a time-dependent pressure on one or more boundary faces. Its first line lists the boundary IDs, and each following line gives a time and the pressure on each of those faces (interpolated linearly in time). For example, to ramp up the pressure on boundary ID 1 from 0 to 200 kPa over one second:
 ```
