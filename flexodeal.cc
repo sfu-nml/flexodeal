@@ -542,6 +542,8 @@ namespace Flexodeal
       unsigned int max_iterations_NR;
       double       tol_f;
       double       tol_u;
+      bool         line_search;
+      unsigned int max_backtracks;
 
       static void declare_parameters(ParameterHandler &prm);
 
@@ -570,6 +572,22 @@ namespace Flexodeal
                           "1.0e-6",
                           Patterns::Double(0.0),
                           "Displacement error tolerance");
+
+        prm.declare_entry("Line search",
+                          "false",
+                          Patterns::Bool(),
+                          "Backtracking line search on the displacement "
+                          "residual norm (classicNewton only). A Newton step "
+                          "is shortened when it does not reduce the residual "
+                          "sufficiently or when it inverts an element "
+                          "(det F <= 0).");
+
+        prm.declare_entry("Max line search backtracks",
+                          "5",
+                          Patterns::Integer(1),
+                          "Maximum number of step reductions per Newton "
+                          "iteration. If exhausted, the shortest step is "
+                          "accepted (unless it inverts an element).");
       }
       prm.leave_subsection();
     }
@@ -582,6 +600,8 @@ namespace Flexodeal
         max_iterations_NR = prm.get_integer("Max iterations Newton-Raphson");
         tol_f             = prm.get_double("Tolerance force");
         tol_u             = prm.get_double("Tolerance displacement");
+        line_search       = prm.get_bool("Line search");
+        max_backtracks    = prm.get_integer("Max line search backtracks");
       }
       prm.leave_subsection();
     }
@@ -589,10 +609,16 @@ namespace Flexodeal
     // @sect4{Time}
 
     // Set the timestep size $ \varDelta t $ and the simulation end-time.
+    // Optionally, a piecewise-constant time step schedule can be given as a
+    // list of "dt:t_end" pairs: the time step dt is used until time t_end is
+    // reached, then the next pair applies. After the last pair (or if no
+    // schedule is given), the default "Time step size" is used until the end
+    // time.
     struct Time
     {
       double delta_t;
       double end_time;
+      std::vector<std::pair<double, double>> time_step_schedule; // (dt, t_end)
 
       static void declare_parameters(ParameterHandler &prm);
 
@@ -609,6 +635,16 @@ namespace Flexodeal
                           "0.1",
                           Patterns::Double(),
                           "Time step size");
+
+        prm.declare_entry("Time step schedule",
+                          "",
+                          Patterns::Anything(),
+                          "Optional piecewise-constant time steps as "
+                          "comma-separated 'dt:t_end' pairs: time step dt is "
+                          "used until time t_end, then the next pair applies. "
+                          "E.g. '0.1:0.1, 0.05:0.21' uses dt = 0.1 until "
+                          "t = 0.1 and dt = 0.05 until t = 0.21. After the "
+                          "last pair (or if empty), 'Time step size' is used.");
       }
       prm.leave_subsection();
     }
@@ -619,6 +655,21 @@ namespace Flexodeal
       {
         end_time = prm.get_double("End time");
         delta_t  = prm.get_double("Time step size");
+
+        time_step_schedule.clear();
+        for (const std::string &entry :
+             Utilities::split_string_list(prm.get("Time step schedule"), ','))
+          {
+            const std::vector<std::string> parts =
+              Utilities::split_string_list(entry, ':');
+            AssertThrow(parts.size() == 2,
+                        ExcMessage("Invalid entry '" + entry +
+                                   "' in 'Time step schedule': entries must "
+                                   "have the form 'dt:t_end'."));
+            time_step_schedule.emplace_back(
+              Utilities::string_to_double(parts[0]),
+              Utilities::string_to_double(parts[1]));
+          }
       }
       prm.leave_subsection();
     }
@@ -661,52 +712,6 @@ namespace Flexodeal
       prm.leave_subsection();
     }
 
-    // @sect4{Measuring locations}
-    
-    // We use this section to indicate the file which contains a list
-    // of markers. We call a "marker" a mesh vertex that contains
-    // displacement degrees of freedom, so that we can output displacement
-    // information at particular points. Older versions of this code had only
-    // support for three points (left, mid, and right), but now all we need
-    // is a list containing a label and the 3D point. For example, a file
-    // called markers.dat could contain the following information:
-    //   p1 0.0075 0.005 0.005
-    //   p2 0.015  0.005 0.005
-    //   p3 0.0225 0.005 0.005
-    // Note that the markers MUST corresponds to places with availability of
-    // displacement degrees of freedom (for Q2 and Q1 elements, these are mesh
-    // vertices).
-    struct MeasuringLocations
-    {
-      std::string markers_list_file;
-
-      static void
-      declare_parameters(ParameterHandler &prm);
-
-      void
-      parse_parameters(ParameterHandler &prm);
-    };
-
-    void Parameters::MeasuringLocations::declare_parameters(ParameterHandler &prm)
-    {
-      prm.enter_subsection("Measuring locations");
-      {
-        prm.declare_entry("Markers list file", "",
-                          Patterns::FileName(),
-                          "File including list of markers");
-      }
-      prm.leave_subsection();
-    }
-
-    void Parameters::MeasuringLocations::parse_parameters(ParameterHandler &prm)
-    {
-      prm.enter_subsection("Measuring locations");
-      {
-        markers_list_file = prm.get("Markers list file");
-      }
-      prm.leave_subsection();
-    }
-    
     struct OutputBinaryFiles
     {
       bool output_main_variables, output_tensors;
@@ -753,7 +758,6 @@ namespace Flexodeal
                            public NonlinearSolver,
                            public Time,
                            public PrescribedDisplacement,
-                           public MeasuringLocations,
                            public OutputBinaryFiles
 
     {
@@ -787,7 +791,6 @@ namespace Flexodeal
       NonlinearSolver::declare_parameters(prm);
       Time::declare_parameters(prm);
       PrescribedDisplacement::declare_parameters(prm);
-      MeasuringLocations::declare_parameters(prm);
       OutputBinaryFiles::declare_parameters(prm);
     }
 
@@ -800,62 +803,139 @@ namespace Flexodeal
       NonlinearSolver::parse_parameters(prm);
       Time::parse_parameters(prm);
       PrescribedDisplacement::parse_parameters(prm);
-      MeasuringLocations::parse_parameters(prm);
       OutputBinaryFiles::parse_parameters(prm);
     }
   } // namespace Parameters
 
   // @sect3{Time class}
 
-  // A simple class to store time data. Its functioning is transparent so no
-  // discussion is necessary. For simplicity we assume a constant time step
-  // size.
+  // A class to store time data, supporting both a uniform time step and a
+  // piecewise-constant time step schedule (see Parameters::Time).
+  //
+  // To avoid round-off errors, all times are stored internally as integer
+  // numbers of "ticks" of 1 ns. Time levels, segment boundaries and the end
+  // condition are thus computed and compared exactly (e.g., there is no
+  // 0.10000000001 instead of 0.1, and no spurious tiny time steps when
+  // switching between segments). Times are converted to double only when
+  // requested: since 1e9 is exactly representable, n / 1e9 is the correctly
+  // rounded double of the exact decimal time, i.e., the same double that
+  // results from parsing, e.g., "0.1" from the parameter file.
   class Time
   {
   public:
-    Time(const double time_end, const double delta_t)
-      : timestep(0)
-      , time_previous(0.0)
-      , time_current(0.0)
-      , time_end(time_end)
-      , delta_t(delta_t)
-    {}
+    Time(const double                                  time_end,
+         const double                                  delta_t,
+         const std::vector<std::pair<double, double>> &schedule = {})
+      : end_ticks(to_ticks(time_end, "End time"))
+      , default_dt_ticks(to_ticks(delta_t, "Time step size"))
+    {
+      AssertThrow(default_dt_ticks > 0,
+                  ExcMessage("The time step size must be positive."));
+
+      for (const auto &[dt_seg, t_seg_end] : schedule)
+        {
+          const Segment s{to_ticks(t_seg_end, "Time step schedule"),
+                          to_ticks(dt_seg, "Time step schedule")};
+          AssertThrow(s.dt > 0,
+                      ExcMessage("Time steps in 'Time step schedule' must be "
+                                 "positive."));
+          AssertThrow(segments.empty() ? s.end > 0 : s.end > segments.back().end,
+                      ExcMessage("The end times in 'Time step schedule' must be "
+                                 "positive and strictly increasing."));
+          segments.push_back(s);
+        }
+
+      // Make get_delta_t() meaningful already at t = 0.
+      dt_ticks = next_ticks() - now_ticks;
+    }
 
     virtual ~Time() = default;
 
     double current() const
     {
-      return time_current;
+      return to_seconds(now_ticks);
     }
     double previous() const
     {
-      return time_previous;
+      return to_seconds(prev_ticks);
     }
     double end() const
     {
-      return time_end;
+      return to_seconds(end_ticks);
     }
     double get_delta_t() const
     {
-      return delta_t;
+      return to_seconds(dt_ticks);
     }
     unsigned int get_timestep() const
     {
       return timestep;
     }
+
+    // The simulation is finished once the current time exceeds the end time.
+    // The time step that lands exactly on the end time is still solved.
+    bool finished() const
+    {
+      return now_ticks > end_ticks;
+    }
+
     void increment()
     {
-      time_previous = time_current;
-      time_current += delta_t;
+      prev_ticks = now_ticks;
+      now_ticks  = next_ticks();
+      dt_ticks   = now_ticks - prev_ticks;
       ++timestep;
     }
 
   private:
-    unsigned int timestep;
-    double       time_previous;
-    double       time_current;
-    const double time_end;
-    const double delta_t;
+    using ticks_t = std::int64_t;
+
+    // 1 ns resolution. With 64-bit integers this covers ~292 years, and times
+    // are converted exactly to double as long as they are below 2^53 ticks
+    // (~104 days).
+    static constexpr double ticks_per_second = 1.0e9;
+
+    struct Segment
+    {
+      ticks_t end; // end time of the segment
+      ticks_t dt;  // time step used within the segment
+    };
+
+    static ticks_t to_ticks(const double t, const std::string &name)
+    {
+      const double  scaled = t * ticks_per_second;
+      const ticks_t n      = std::llround(scaled);
+      AssertThrow(std::abs(scaled - static_cast<double>(n)) < 1.0e-3,
+                  ExcMessage("The value " + Utilities::to_string(t) + " given in '" +
+                             name + "' is not a multiple of 1 ns."));
+      return n;
+    }
+
+    static double to_seconds(const ticks_t n)
+    {
+      return static_cast<double>(n) / ticks_per_second;
+    }
+
+    // The next time level: use the time step of the segment containing the
+    // current time, and land exactly on the segment boundaries. Past the last
+    // segment (or if there is no schedule), use the default time step. Pure
+    // integer arithmetic: no tolerances are needed.
+    ticks_t next_ticks() const
+    {
+      for (const Segment &s : segments)
+        if (now_ticks < s.end)
+          return std::min(now_ticks + s.dt, s.end);
+
+      return now_ticks + default_dt_ticks;
+    }
+
+    std::vector<Segment> segments;
+    const ticks_t        end_ticks;
+    const ticks_t        default_dt_ticks;
+    ticks_t              now_ticks  = 0;
+    ticks_t              prev_ticks = 0;
+    ticks_t              dt_ticks   = 0;
+    unsigned int         timestep   = 0;
   };
 
   // @sect3{Function from tabular data and interpolation tools}
@@ -1712,8 +1792,12 @@ namespace Flexodeal
     // dilation $\widetilde{J}$ field values, fibre activation $a(t^n)$,
     // and time step size $\delta t$ (recall that the elasticity tensor
     // in the dynamic computation depends on the current time step size).
-    void setup_lqp(const Parameters::AllParameters &parameters,
-                   const std::map<std::string, double> &qp_data)
+    // The time step size is passed separately (from the Time object) rather
+    // than taken from parameters.delta_t, so that the first time step uses
+    // the time step from the schedule, if one is given.
+    void setup_lqp(const Parameters::AllParameters     &parameters,
+                   const std::map<std::string, double> &qp_data,
+                   const double                         delta_t)
     { 
       const unsigned int tissue_id = (unsigned int)qp_data.at("tissue_id");
 
@@ -1807,7 +1891,7 @@ namespace Flexodeal
                     0.0,                /*Pressure*/
                     1.0,                /*Dilation*/
                     0.0,                /*Activation*/
-                    parameters.delta_t  /*Time step size*/);
+                    delta_t             /*Time step size*/);
     }
 
     // To this end, we calculate the deformation gradient $\mathbf{F}$ from
@@ -1824,7 +1908,12 @@ namespace Flexodeal
     // general, the conversion to SymmetricTensor will fail. We can avoid this
     // back and forth by converting $I$ to Tensor first, and then performing
     // the addition as between nonsymmetric tensors:
-    void update_values(const Tensor<1, dim> &u_n,
+    //
+    // If the deformation gradient is not admissible (det F <= 0, i.e., the
+    // element is inverted at this point), nothing is updated and false is
+    // returned, so that the caller can react (e.g., by shortening the Newton
+    // step) instead of aborting the program.
+    bool update_values(const Tensor<1, dim> &u_n,
                        const Tensor<2, dim> &Grad_u_n,
                        const double          p_tilde,
                        const double          J_tilde,
@@ -1832,6 +1921,9 @@ namespace Flexodeal
                        const double          delta_t)
     {
       const Tensor<2, dim> F = Physics::Elasticity::Kinematics::F(Grad_u_n);
+      if (!(determinant(F) > 0.0))
+        return false;
+
       grad_velocity = (F - F_previous) / delta_t;
       material->update_material_data(F, 
                                      p_tilde, 
@@ -1859,6 +1951,8 @@ namespace Flexodeal
       Jc                          = material->get_Jc();
       dPsi_vol_dJ                 = material->get_dPsi_vol_dJ();
       d2Psi_vol_dJ2               = material->get_d2Psi_vol_dJ2();
+
+      return true;
     }
 
     // Next, we implement a function that will update the previous variables once
@@ -2143,15 +2237,27 @@ namespace Flexodeal
     // empty:
     void setup_qph();
 
-    void update_qph_incremental(const BlockVector<double> &solution_delta);
+    // Returns false if det F <= 0 at some quadrature point. In that case the
+    // quadrature point data is only partially updated and must not be used
+    // for assembly.
+    bool update_qph_incremental(const BlockVector<double> &solution_delta);
 
     void update_qph_incremental_one_cell(
       const typename DoFHandler<dim>::active_cell_iterator &cell,
       ScratchData_UQPH &                                    scratch,
       PerTaskData_UQPH &                                    data);
 
-    void copy_local_to_global_UQPH(const PerTaskData_UQPH & /*data*/)
-    {}
+    // The only "global" data collected during the update is whether some
+    // quadrature point was inverted. The copier runs sequentially, so no
+    // synchronization is needed.
+    void copy_local_to_global_UQPH(const PerTaskData_UQPH &data);
+
+    bool qph_inverted = false;
+
+    // Whether assemble_system() and update_qph_incremental() print their
+    // progress labels in the convergence table (turned off while the line
+    // search reassembles, to keep the columns aligned).
+    bool print_progress = true;
 
     void update_timestep();
 
@@ -2346,7 +2452,7 @@ namespace Flexodeal
     , parameters(varargs.at("-PARAMETERS"))
     , vol_reference(0.)
     , triangulation(Triangulation<dim>::maximum_smoothing)
-    , time(parameters.end_time, parameters.delta_t)
+    , time(parameters.end_time, parameters.delta_t, parameters.time_step_schedule)
     , timer(std::cout, TimerOutput::summary, TimerOutput::wall_times)
     , u_dir(varargs.at("-BDY_STRAIN"))
     , activation_function(varargs.at("-ACTIVATION"))
@@ -2546,7 +2652,7 @@ namespace Flexodeal
     //
     // At the beginning, we reset the solution update for this time step...
     BlockVector<double> solution_delta(dofs_per_block);
-    while (time.current() < time.end())
+    while (!time.finished())
       {
         solution_delta = 0.0;
 
@@ -2753,8 +2859,12 @@ namespace Flexodeal
   template <int dim>
   struct Solid<dim>::PerTaskData_UQPH
   {
+    bool inverted = false; // det F <= 0 at some QP of the cell
+
     void reset()
-    {}
+    {
+      inverted = false;
+    }
   };
 
 
@@ -3183,8 +3293,19 @@ namespace Flexodeal
               << std::endl;
 
     // Now that the dof_handler structure has been set up, we find the
-    // global_dof_index corresponding to different markers listed by the
-    // user ("set Markers list file" in parameter file).
+    // global_dof_index corresponding to the markers listed by the user.
+    //
+    // We call a "marker" a mesh vertex that contains displacement degrees of
+    // freedom, so that we can output displacement information at particular
+    // points. The markers are read from the file given by the -MARKERS
+    // command-line flag (markers.dat by default), which contains one marker
+    // per line: a label followed by the 3D point. For example:
+    //   p1 0.0075 0.005 0.005
+    //   p2 0.015  0.005 0.005
+    //   p3 0.0225 0.005 0.005
+    // Note that the markers MUST correspond to places with availability of
+    // displacement degrees of freedom (for Q2 and Q1 elements, these are mesh
+    // vertices).
     {
       // First, we declare an exception in case one of the points
       // is not found as a vertex in the grid.
@@ -3195,13 +3316,14 @@ namespace Flexodeal
         << " was not found among the vertices of the present grid.");
 
       // Read line from file and push back a new marker
-      std::ifstream infile(parameters.markers_list_file);
+      const std::string &markers_file = varargs.at("-MARKERS");
+      std::ifstream      infile(markers_file);
 
       // Raise an exception if file cannot be open (perhaps it does not
       // even exist!).
       if (infile.fail())
         throw std::invalid_argument("Cannot open file: " 
-                + parameters.markers_list_file 
+                + markers_file
                 + ". Make sure the file exists and it has read permissions.");
       
       std::string label;
@@ -3464,7 +3586,7 @@ namespace Flexodeal
             break;
           }
 
-          lqph[q_point]->setup_lqp(parameters, qp_data);
+          lqph[q_point]->setup_lqp(parameters, qp_data, time.get_delta_t());
         }
       }
 
@@ -3566,7 +3688,7 @@ namespace Flexodeal
           }
           
           // Setup current QP
-          lqph[q_point]->setup_lqp(parameters, qp_data);
+          lqph[q_point]->setup_lqp(parameters, qp_data, time.get_delta_t());
         }
       }
 
@@ -3588,11 +3710,14 @@ namespace Flexodeal
   // at this Newton increment and then create the initial copy of the scratch
   // and copy data objects:
   template <int dim>
-  void
+  bool
   Solid<dim>::update_qph_incremental(const BlockVector<double> &solution_delta)
   {
     timer.enter_subsection("Update QPH data");
-    std::cout << " UQPH " << std::flush;
+    if (print_progress)
+      std::cout << " UQPH " << std::flush;
+
+    qph_inverted = false;
 
     const BlockVector<double> solution_total(
       get_total_solution(solution_delta));
@@ -3611,6 +3736,16 @@ namespace Flexodeal
                     per_task_data_UQPH);
 
     timer.leave_subsection();
+
+    return !qph_inverted;
+  }
+
+
+  template <int dim>
+  void Solid<dim>::copy_local_to_global_UQPH(const PerTaskData_UQPH &data)
+  {
+    if (data.inverted)
+      qph_inverted = true;
   }
 
 
@@ -3620,8 +3755,10 @@ namespace Flexodeal
   void Solid<dim>::update_qph_incremental_one_cell(
     const typename DoFHandler<dim>::active_cell_iterator &cell,
     ScratchData_UQPH &                                    scratch,
-    PerTaskData_UQPH & /*data*/)
+    PerTaskData_UQPH &                                    data)
   {
+    data.reset();
+
     const std::vector<std::shared_ptr<PointHistory<dim>>> lqph =
       quadrature_point_history.get_data(cell);
     Assert(lqph.size() == n_q_points, ExcInternalError());
@@ -3653,12 +3790,13 @@ namespace Flexodeal
 
     for (const unsigned int q_point :
          scratch.fe_values.quadrature_point_indices())
-      lqph[q_point]->update_values(scratch.solution_values_u_total[q_point],
-                                   scratch.solution_grads_u_total[q_point],
-                                   scratch.solution_values_p_total[q_point],
-                                   scratch.solution_values_J_total[q_point],
-                                   activation_function(time.current())[0],
-                                   time.get_delta_t());
+      if (!lqph[q_point]->update_values(scratch.solution_values_u_total[q_point],
+                                        scratch.solution_grads_u_total[q_point],
+                                        scratch.solution_values_p_total[q_point],
+                                        scratch.solution_values_J_total[q_point],
+                                        activation_function(time.current())[0],
+                                        time.get_delta_t()))
+        data.inverted = true;
   }
 
   // The update at the end of the time step is even simpler. It only needs to
@@ -3738,8 +3876,17 @@ namespace Flexodeal
     // Additional variables required for accelerated Newton method
     BlockVector<double> newton_update_previous(dofs_per_block);
     BlockVector<double> solution_k_previous(solution_n); 
-    BlockVector<double> solution_k(dofs_per_block); 
-    
+    BlockVector<double> solution_k(dofs_per_block);
+
+    // Additional variables required for the line search (see below)
+    const bool use_line_search =
+      parameters.line_search &&
+      parameters.type_nonlinear_solver == "classicNewton";
+    BlockVector<double> step_previous(dofs_per_block); // full Newton step
+    Errors              error_step_previous;           // its norms
+    double              alpha            = 1.0;  // fraction of it applied
+    double              residual_u_start = 0.0;  // |R_u| before it
+    bool                qph_valid        = true; // det F > 0 everywhere
 
     error_residual.reset();
     error_residual_0.reset();
@@ -3779,11 +3926,99 @@ namespace Flexodeal
         // We construct the linear system, but hold off on solving it
         // (a step that should be significantly more expensive than assembly):
         make_constraints(newton_iteration);
-        assemble_system();
 
-        // We can now determine the normalized residual error and check for
-        // solution convergence:
-        get_error_residual(error_residual);
+        // Step lengths tried by the line search, printed at the end of the row
+        std::ostringstream line_search_info;
+
+        if (use_line_search && newton_iteration >= 2)
+          {
+            // Backtracking line search on the displacement residual norm.
+            // The step taken at the previous iteration is checked here, using
+            // the residual that has to be assembled anyway, so a full step
+            // that is accepted costs nothing extra. If the residual did not
+            // decrease sufficiently (Armijo condition with c = 1e-4), or if
+            // the step inverted an element, the step is shortened, the QP
+            // data updated and the system reassembled.
+            //
+            // The step of iteration 0 is never checked: it carries the
+            // Dirichlet increment (non-homogeneous constraints), so it must
+            // be applied in full. From iteration 1 on, the constraints are
+            // homogeneous and the steps can be scaled freely.
+            //
+            // To keep the columns of the convergence table aligned, the
+            // progress labels (ASM_SYS, UQPH) are printed only once per row,
+            // and the step lengths tried are printed at the end of the row.
+            const double c_armijo = 1.0e-4;
+            bool         asm_label_printed = false;
+
+            for (unsigned int n_backtracks = 0;; ++n_backtracks)
+              {
+                if (qph_valid)
+                  {
+                    print_progress    = !asm_label_printed;
+                    asm_label_printed = true;
+                    assemble_system();
+                    get_error_residual(error_residual);
+                    if (error_residual.u <=
+                        (1.0 - c_armijo * alpha) * residual_u_start)
+                      break;
+                  }
+
+                // Too many reductions: accept the shortest step, unless it
+                // inverts an element.
+                if (n_backtracks == parameters.max_backtracks)
+                  {
+                    AssertThrow(qph_valid,
+                                ExcMessage("Line search failed: det F <= 0 "
+                                           "even for the shortest step."));
+                    line_search_info << " LS-MAX";
+                    break;
+                  }
+
+                // New step length: minimizer of the quadratic model of
+                // phi(alpha) = |R_u(alpha)|^2 / 2 with phi'(0) = -|R_u(0)|^2
+                // (exact for an exact Newton direction), safeguarded to
+                // [0.1, 0.5] times the current one. Halve if the residual is
+                // unknown (inverted element).
+                double alpha_new = 0.5 * alpha;
+                if (qph_valid)
+                  {
+                    const double r0_sq = residual_u_start * residual_u_start;
+                    const double r_sq  = error_residual.u * error_residual.u;
+                    const double denom = r_sq - r0_sq + 2.0 * alpha * r0_sq;
+                    if (denom > 0.0)
+                      alpha_new = std::clamp(alpha * alpha * r0_sq / denom,
+                                             0.1 * alpha,
+                                             0.5 * alpha);
+                  }
+
+                solution_delta.add(alpha_new - alpha, step_previous);
+                alpha = alpha_new;
+                line_search_info << " LS(" << std::setprecision(3) << alpha
+                                 << ")";
+                print_progress = false;
+                qph_valid      = update_qph_incremental(solution_delta);
+              }
+            print_progress = true;
+
+            // The convergence check must use the step actually applied.
+            error_update_norm.norm = alpha * error_step_previous.norm;
+            error_update_norm.u    = alpha * error_step_previous.u;
+            error_update_norm.p    = alpha * error_step_previous.p;
+            error_update_norm.J    = alpha * error_step_previous.J;
+          }
+        else
+          {
+            AssertThrow(qph_valid,
+                        ExcMessage("det F <= 0 at some quadrature point. Try "
+                                   "'Line search = true' (classicNewton) or "
+                                   "a smaller time step."));
+            assemble_system();
+
+            // We can now determine the normalized residual error and check
+            // for solution convergence:
+            get_error_residual(error_residual);
+          }
         if (newton_iteration == 0)
           error_residual_0 = error_residual;
 
@@ -3793,7 +4028,7 @@ namespace Flexodeal
         if (newton_iteration > 0 && error_update_norm.u <= parameters.tol_u &&
             error_residual_norm.u <= parameters.tol_f)
           {
-            std::cout << " CONVERGED! " << std::endl;
+            std::cout << " CONVERGED! " << line_search_info.str() << std::endl;
             print_conv_footer();
 
             break;
@@ -3818,6 +4053,16 @@ namespace Flexodeal
         // this new displacement and stress state and continue iterating:
         if (parameters.type_nonlinear_solver == "classicNewton")
         {
+          // Keep what the line search needs to check (and possibly shorten)
+          // this step at the next iteration.
+          if (use_line_search)
+            {
+              step_previous       = newton_update;
+              error_step_previous = error_update;
+              residual_u_start    = error_residual.u;
+              alpha               = 1.0;
+            }
+
           solution_delta += newton_update;
         }
         else if (parameters.type_nonlinear_solver == "acceleratedNewton")
@@ -3830,30 +4075,54 @@ namespace Flexodeal
           // S. Pollock and H. Schwartz. Benchmarking results for the Newton-Anderson method.
           // Results in Applied Mathematics 8 (2020), 100095. 
           // https://doi.org/10.1016/j.rinam.2020.100095
-          if (newton_iteration == 0)
+          if (newton_iteration <= 1)
           {
-            // Usual Newton update for the very first iteration
+            // Usual Newton update for the first two iterations. The update
+            // at iteration 0 is computed with the non-homogeneous Dirichlet
+            // constraints (it carries the boundary increment), so it is not
+            // a step of the same fixed-point map as the following ones and
+            // must not enter the Anderson history: mixing it in gives
+            // gamma ~ 1 at iteration 1 and an (almost) zero step.
+            // The history therefore starts at iteration 1.
+            solution_k_previous = solution_n + solution_delta;
             solution_delta += newton_update;
             solution_k = solution_n + solution_delta;
             newton_update_previous = newton_update;
           }
           else
           {
-            // Now use the different direction
+            // Mix the last two Newton proposals x_k + w_k and x_{k-1} + w_{k-1}:
+            //   gamma   = w_k . (w_k - w_{k-1}) / |w_k - w_{k-1}|^2
+            //   x_{k+1} = (1 - gamma) (x_k + w_k) + gamma (x_{k-1} + w_{k-1})
             const BlockVector<double> newton_delta = newton_update - newton_update_previous;
-            const double gamma_update = (newton_update * newton_delta)
-                                            / (newton_delta * newton_delta);
+            const double newton_delta_sq = newton_delta * newton_delta;
+
+            // If two consecutive Newton updates (nearly) coincide, gamma is
+            // undefined or meaningless, so we fall back to a plain Newton
+            // step (gamma = 0).
+            const double threshold =
+              1.0e-12 * std::max(newton_update * newton_update,
+                                 newton_update_previous * newton_update_previous);
+            const double gamma_update =
+              (newton_delta_sq > threshold) ?
+                (newton_update * newton_delta) / newton_delta_sq :
+                0.0;
+
+            // x_k must be kept before it is overwritten, since it becomes
+            // x_{k-1} in the next iteration.
+            const BlockVector<double> solution_k_current = solution_k;
             solution_k = (1-gamma_update) * (solution_k + newton_update) + gamma_update * (solution_k_previous + newton_update_previous);
             solution_delta = solution_k - solution_n;
+
             // Update previous variables
-            solution_k_previous = solution_k;
+            solution_k_previous = solution_k_current;
             newton_update_previous = newton_update;
           }
         }
         else
             Assert (false, ExcMessage("Non-linear solver type not implemented"));
 
-        update_qph_incremental(solution_delta);
+        qph_valid = update_qph_incremental(solution_delta);
 
         std::cout << " | " << std::fixed << std::setprecision(3) << std::setw(7)
                   << std::scientific << lin_solver_output.first << "  "
@@ -3862,7 +4131,8 @@ namespace Flexodeal
                   << "  " << error_residual_norm.p << "  "
                   << error_residual_norm.J << "  " << error_update_norm.norm
                   << "  " << error_update_norm.u << "  " << error_update_norm.p
-                  << "  " << error_update_norm.J << "  " << std::endl;
+                  << "  " << error_update_norm.J << "  "
+                  << line_search_info.str() << std::endl;
       }
 
     // At the end, if it turns out that we have in fact done more iterations
@@ -4069,7 +4339,8 @@ namespace Flexodeal
   void Solid<dim>::assemble_system()
   {
     timer.enter_subsection("Assemble system");
-    std::cout << " ASM_SYS " << std::flush;
+    if (print_progress)
+      std::cout << " ASM_SYS " << std::flush;
 
     tangent_matrix = 0.0;
     system_rhs     = 0.0;
@@ -4613,6 +4884,12 @@ namespace Flexodeal
   {
     unsigned int lin_it  = 0;
     double       lin_res = 0.0;
+
+    // Start every linear solve from a zero initial guess. Otherwise the
+    // iterative solvers (CG/GMRES) in the static condensation branch would
+    // start from the previous Newton update, which at the first iteration
+    // also carries the Dirichlet increment on the constrained DOFs.
+    newton_update = 0.0;
 
     if (parameters.use_static_condensation == true)
       {
@@ -6315,6 +6592,7 @@ int main(int argc, char* argv[])
   args["-QP_LIST_ONLY"] = "false";
   args["-MESH_FILE"] = "";
   args["-PRESSURE"]   = "control_points_pressure.dat";
+  args["-MARKERS"]    = "markers.dat";
   args["-OUTPUT_DIR"] = "";
   args["-QP_FILE"] = "";
 

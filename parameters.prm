@@ -166,9 +166,21 @@ end
 
 subsection Nonlinear solver
   # Type of nonlinear solve (classicNewton or acceleratedNewton).
-  # Note that classicNewton is STRONGLY suggested as acceleratedNewton
-  # hasn't shown good performance at all.
+  # acceleratedNewton is Newton's method with depth-1 Anderson
+  # acceleration (Pollock & Schwartz, 2020).
   set Nonlinear solver type = classicNewton
+
+  # Backtracking line search (classicNewton only). When a full Newton
+  # step does not reduce the residual enough, or when it inverts an
+  # element (det F <= 0), the step is shortened instead of the run
+  # failing. Full steps are still taken whenever they are good enough.
+  # The step lengths tried are printed at the end of each row of the
+  # convergence table, e.g. LS(0.238), or LS-MAX if the maximum number
+  # of backtracks is reached (the shortest step is then accepted).
+  set Line search                = false
+
+  # Maximum number of step reductions per Newton iteration
+  set Max line search backtracks = 5
 
   # Number of Newton-Raphson iterations allowed.
   # Note that dynamic simulations can easily require 10 to 15 
@@ -186,12 +198,20 @@ end
 
 subsection Time
   # End time [s]
-  # To obtain data for the very last time step, add 1e-08 to
-  # the desired end time
-  set End time       = 1.00000001
+  # The time step that lands exactly on the end time is also solved.
+  set End time           = 1.0
 
   # Time step size [s]
-  set Time step size = 0.01
+  set Time step size     = 0.01
+
+  # Optional time step schedule, as comma-separated "dt:t_end" pairs:
+  # the time step dt is used until time t_end, then the next pair
+  # applies. After the last pair, "Time step size" is used until the
+  # end time. For example, "0.025:0.1, 0.0125:0.2" takes steps of
+  # 0.025 s until t = 0.1 s, then 0.0125 s until t = 0.2 s, then
+  # "Time step size" until the end. All times must be multiples of 1 ns.
+  # Leave empty to use "Time step size" throughout.
+  set Time step schedule =
 end
 
 
@@ -202,14 +222,6 @@ subsection Prescribed displacement
     set Pulling face ID  = 1
 end
 
-
-subsection Measuring locations
-    # These locations MUST correspond to vertices on the grid. Otherwise
-    # the solver returns the error: "The evaluation point ... was not 
-    # found among the vertices of the present grid."
-
-    set Markers list file = markers.dat
-end
 
 subsection Output binary files
     # These files contain QP information of the main variables in the code
